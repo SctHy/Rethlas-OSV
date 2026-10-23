@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Download the pinned Codex CLI release binary and its code-mode host for a target triple.
 # Usage: fetch-codex.sh <target-triple> <output-dir>
-#   target triples: aarch64-apple-darwin (Apple silicon), x86_64-apple-darwin (Intel),
-#                   x86_64-unknown-linux-musl, aarch64-unknown-linux-musl
+#   target triples: aarch64-apple-darwin (Apple silicon), x86_64-apple-darwin (Intel)
 set -euo pipefail
 CODEX_VERSION="${CODEX_VERSION:-0.162.1}"
 TARGET="${1:?target triple}"

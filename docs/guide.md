@@ -41,8 +41,8 @@ the current app or interpreter, never the executable named in the file), so all 
 the core's. Closing the browser or the GUI does not stop a run; reopening the GUI
 reattaches to it. Settings and run directories live under `~/.osverifier/` by default
 (`--home`, `--runs-dir`). Users sign in with their own Codex CLI account; the GUI only
-runs `codex login` and `codex login status` and stores no credentials. macOS and Linux
-are supported; PDF input is not, use LaTeX or Markdown text.
+runs `codex login` and `codex login status` and stores no credentials. Only macOS is
+supported; PDF input is not, use LaTeX or Markdown text.
 
 ### Desktop app
 
@@ -126,8 +126,6 @@ Differences from Codex to be aware of:
   remains instruction-level.
 - Claude Code subagents cannot spawn subagents. Any positive `--agent-depth` enables the
   `subgoal-prover` subagent at depth one, and `--agent-threads` is recorded but not enforced.
-- On Linux, Claude Code's Bash sandbox needs bubblewrap. Without it, Bash commands fail
-  rather than running unsandboxed.
 - Quota is recognized only from a rejected rate-limit event (with no overage in use) or
   an error result naming an exhausted usage limit, and recorded like Codex quota.
 - Plain verification in the GUI and `osverify verify` still use Codex; the Claude

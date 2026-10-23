@@ -19,7 +19,6 @@ Codex account inside the app.
 | --- | --- |
 | macOS, Apple silicon (M1 or later) | `Rethlas-OSV-<version>-arm64.dmg` |
 | macOS, Intel | `Rethlas-OSV-<version>-x86_64.dmg` |
-| Linux, x86-64 | `Rethlas-OSV-<version>-linux-x86_64.tar.gz` |
 
 **Opening the app on macOS.** The app is not signed with an Apple Developer ID yet, so
 macOS blocks the first launch. Once per install:
@@ -31,13 +30,6 @@ macOS blocks the first launch. Once per install:
 
 From then on it opens normally. On macOS 14 or earlier you can instead Control-click the
 app in Applications, choose **Open**, and confirm with **Open**.
-
-**Linux.** Unpack and run:
-
-```bash
-tar -xzf Rethlas-OSV-*-linux-x86_64.tar.gz
-./Rethlas-OSV/Rethlas-OSV
-```
 
 ## Run from source
 
@@ -78,7 +70,7 @@ with up to ten revision rounds each. Rerun the same command to resume.
   review records. It is only given audited feedback, but the sandbox can read any file
   your account can read, so it is able to read those records. A stronger boundary needs
   a read-restricted Codex sandbox.
-- Windows is not supported.
+- Only macOS is supported; there is no Linux or Windows build.
 
 ## Documentation
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import platform
 import shutil
 import sys
 import threading
@@ -23,11 +22,7 @@ def data_dir() -> Path:
     override = os.environ.get("OSVERIFIER_HOME")
     if override:
         return Path(override).expanduser()
-    system = platform.system()
-    if system == "Darwin":
-        return Path.home() / "Library" / "Application Support" / APP_NAME
-    xdg = os.environ.get("XDG_DATA_HOME")
-    return (Path(xdg) if xdg else Path.home() / ".local" / "share") / "rethlas-osv"
+    return Path.home() / "Library" / "Application Support" / APP_NAME
 
 
 def resources_dir() -> Path:

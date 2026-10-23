@@ -3,9 +3,9 @@
 ## Without a Mac: GitHub Actions
 
 The workflow `.github/workflows/desktop-apps.yml` builds the app on GitHub's macOS
-runners for Apple silicon and Intel, plus a Linux bundle on Ubuntu. Open the
+runners for Apple silicon and Intel. Open the
 repository's Actions tab, run "Desktop apps", and download the `Rethlas-OSV-arm64` /
-`Rethlas-OSV-x86_64` artifacts (each holds the `.dmg`) or `Rethlas-OSV-linux-x86_64`.
+`Rethlas-OSV-x86_64` artifacts (each holds the `.dmg`).
 Each job runs `packaging/smoke-test.sh` against its compiled binary, so a bundling
 problem fails the job instead of reaching a user. Pushing a tag such as `v0.6.0` runs it too. Add the
 secrets named at the top of the workflow to get a signed and notarized build;

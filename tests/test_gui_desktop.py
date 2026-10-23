@@ -35,7 +35,7 @@ def test_module_command_switches_to_entry_flag_when_frozen(monkeypatch):
     run = desktop.Path("/tmp/x")
 
     def dispatches(argv, module):
-        # Same file, not the same string: Linux resolves the venv link via /proc/self/exe.
+        # Same file, not the same string: the venv interpreter may be a symbolic link.
         return os.path.samefile(argv[0], sys.executable) and argv[1:3] == ["--entry", module]
 
     assert dispatches(verify_argv(run, settings, run / "q", run / "s", "r"), "osverifier.cli")
