@@ -399,6 +399,34 @@ def test_jobs_run_children_in_utf8_mode(tmp_path):
     assert "PYTHONUTF8" not in os.environ or os.environ["PYTHONUTF8"] == "1"
 
 
+def test_lock_probe_sees_a_run_lock_and_never_takes_it(tmp_path):
+    import fcntl
+    import threading
+
+    from osverifier.storage import run_lock
+
+    from rethlas_osv_gui.jobs import lock_held
+
+    run_dir = tmp_path / "run"
+    assert not lock_held(run_dir)
+    with run_lock(run_dir):
+        assert lock_held(run_dir)
+    assert not lock_held(run_dir)
+
+    # A CLI starting while the GUI polls must never see contention from the probe.
+    stop = threading.Event()
+    poller = threading.Thread(target=lambda: [lock_held(run_dir) for _ in iter(stop.is_set, True)])
+    poller.start()
+    try:
+        for _ in range(3000):
+            with (run_dir / ".lock").open("a+b") as handle:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    finally:
+        stop.set()
+        poller.join()
+
+
 def test_reattach_marks_lost_process_as_exited(tmp_path):
     run_dir = tmp_path / "run"
     run_dir.mkdir()

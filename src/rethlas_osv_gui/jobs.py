@@ -5,6 +5,7 @@ from __future__ import annotations
 import fcntl
 import os
 import signal
+import struct
 import subprocess
 import threading
 from datetime import datetime, timezone
@@ -23,18 +24,30 @@ def now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# macOS ``struct flock``: l_start, l_len (off_t), l_pid (pid_t), l_type, l_whence (short).
+_FLOCK = struct.Struct("qqihh")
+
+
 def lock_held(run_dir: Path) -> bool:
-    """True when a verifier/prover process currently owns this run directory."""
+    """True when a verifier/prover process currently owns this run directory.
+
+    The CLIs take ``flock(LOCK_EX | LOCK_NB)`` and fail at once on contention, so the
+    probe must never hold the lock itself, even briefly: a run started from a terminal
+    at that moment would report that another process owns its directory. On macOS
+    ``flock`` and ``fcntl`` locks share one lock manager, so ``F_GETLK`` reports the
+    flock without taking it.
+    """
     lock = run_dir / ".lock"
-    if not lock.exists():
+    try:
+        fd = os.open(lock, os.O_RDONLY | os.O_CLOEXEC)
+    except FileNotFoundError:
         return False
-    with lock.open("a+") as handle:
-        try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            return True
-        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-        return False
+    try:
+        query = _FLOCK.pack(0, 0, 0, fcntl.F_WRLCK, os.SEEK_SET)
+        l_type = _FLOCK.unpack(fcntl.fcntl(fd, fcntl.F_GETLK, query))[3]
+        return l_type != fcntl.F_UNLCK
+    finally:
+        os.close(fd)
 
 
 def pid_alive(pid: int | None) -> bool:
