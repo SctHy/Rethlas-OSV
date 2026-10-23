@@ -10,6 +10,7 @@ from osverifier.backend import DEFAULT_MODEL, CodexBackend
 from osverifier.pipeline import RunConfig, Verifier
 from osverifier.workflow import DecomposingVerifier, WorkflowConfig
 
+from .claude import DEFAULT_CLAUDE_MODEL, ClaudeBackend, ClaudeGenerator
 from .encoding import text_encoding_warning, tolerate_console_encoding
 from .generator import CodexGenerator
 from .runner import ROOT, Experiment, LoopConfig
@@ -26,12 +27,17 @@ def parser():
         help="Optional directory; defaults to the problem's sibling .refs directory if present",
     )
     p.add_argument("--run-dir", type=Path, required=True)
-    p.add_argument("--generator-model", default=DEFAULT_MODEL, help=f"default {DEFAULT_MODEL}; `osverify models` lists choices")
-    p.add_argument("--verifier-model", default=DEFAULT_MODEL, help=f"default {DEFAULT_MODEL}")
+    backends = ("codex", "claude")
+    p.add_argument("--generator-backend", choices=backends, default="codex", help="CLI that runs generation turns (default: codex)")
+    p.add_argument("--verifier-backend", choices=backends, default="codex", help="CLI that runs OSVerify review roles (default: codex)")
+    p.add_argument("--generator-model", help=f"default {DEFAULT_MODEL} (codex) or {DEFAULT_CLAUDE_MODEL} (claude); `osverify models` lists Codex choices")
+    p.add_argument("--verifier-model", help=f"default {DEFAULT_MODEL} (codex) or {DEFAULT_CLAUDE_MODEL} (claude)")
     p.add_argument("--generator-reasoning-effort", default="xhigh")
     p.add_argument("--verifier-reasoning-effort", default="xhigh")
     p.add_argument("--codex-bin", default=os.environ.get("CODEX_BIN", "codex"))
     p.add_argument("--codex-home", type=Path)
+    p.add_argument("--claude-bin", default=os.environ.get("CLAUDE_BIN", "claude"))
+    p.add_argument("--claude-config-dir", type=Path, help="Claude Code account folder (CLAUDE_CONFIG_DIR); default: your own")
     p.add_argument(
         "--max-rounds",
         type=int,
@@ -92,24 +98,46 @@ def main(argv=None):
     try:
         if args.root_only and args.no_early_stop:
             raise ValueError("--no-early-stop cannot be combined with --root-only")
-        generator = CodexGenerator(
-            model=args.generator_model,
-            codex_bin=args.codex_bin,
-            codex_home=args.codex_home,
+        generator_options = dict(
             reasoning_effort=args.generator_reasoning_effort,
             timeout_seconds=args.generator_timeout or None,
             agent_threads=args.agent_threads,
             agent_depth=args.agent_depth,
         )
-        backend = CodexBackend(
-            model=args.verifier_model,
-            codex_bin=args.codex_bin,
-            codex_home=args.codex_home,
+        if args.generator_backend == "claude":
+            generator = ClaudeGenerator(
+                model=args.generator_model or DEFAULT_CLAUDE_MODEL,
+                claude_bin=args.claude_bin,
+                config_dir=args.claude_config_dir,
+                **generator_options,
+            )
+        else:
+            generator = CodexGenerator(
+                model=args.generator_model or DEFAULT_MODEL,
+                codex_bin=args.codex_bin,
+                codex_home=args.codex_home,
+                **generator_options,
+            )
+        verifier_options = dict(
             reasoning_effort=args.verifier_reasoning_effort,
             timeout_seconds=args.verifier_timeout,
             idle_timeout_seconds=args.verifier_idle_timeout or None,
             web_search=args.verifier_web_search,
         )
+        if args.verifier_backend == "claude":
+            backend = ClaudeBackend(
+                model=args.verifier_model or DEFAULT_CLAUDE_MODEL,
+                claude_bin=args.claude_bin,
+                config_dir=args.claude_config_dir,
+                **verifier_options,
+            )
+        else:
+            backend = CodexBackend(
+                model=args.verifier_model or DEFAULT_MODEL,
+                codex_bin=args.codex_bin,
+                codex_home=args.codex_home,
+                **verifier_options,
+            )
         config = dict(
             workers=args.workers, max_issues=args.max_issues, max_attempts=args.max_attempts
         )

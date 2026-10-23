@@ -35,6 +35,12 @@ Generation turns have no wall-clock deadline by default (`--generator-timeout 0`
 quota detection must keep polling, and manual cancellation must remain effective.
 Explicit positive generation deadlines and separate verifier/tool timeouts remain supported.
 
+The optional Claude Code transport (`src/rethlas_osv/claude.py`) keeps the same contracts.
+It implements the verifier's Backend protocol without changing the core, uses a fresh
+backend per candidate, and runs every call isolated from the user's Claude Code setup:
+empty setting sources, strict MCP config, skills disabled, auto-memory off, restricted
+file tools and the Bash sandbox. Quota is recognized only from explicit limit signals.
+
 The GUI lives in the separate `src/rethlas_osv_gui` package and must stay outside
 `src/rethlas_osv`, because the Rethlas runner fingerprints that package (and the
 installed OSVerify core) into every experiment manifest. It launches the CLIs as child processes, cancels with SIGINT, and resumes

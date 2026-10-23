@@ -56,7 +56,9 @@ uv run rethlas-osv-gui   # local web GUI at http://127.0.0.1:8765
 Without `--problem`, the bundled example (every finite group of prime order is cyclic)
 is used. Both the generator and the verifier default to `gpt-6-astra`; choose others
 with `--generator-model` and `--verifier-model` (the GUI suggests every model your Codex
-account offers). `--generation-branches 4 --max-rounds 10` runs four independent proof attempts
+account offers). Prove runs can also use [Claude Code](https://code.claude.com) for
+generation, review, or both: `--generator-backend claude --verifier-backend claude`
+(see the [guide](docs/guide.md#claude-code-backends)). `--generation-branches 4 --max-rounds 10` runs four independent proof attempts
 with up to ten revision rounds each. Rerun the same command to resume.
 
 ## How a run works

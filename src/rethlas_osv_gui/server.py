@@ -25,10 +25,13 @@ from osverifier.storage import atomic_text, read_json
 from osverifier_reports.paper_prepare import MODES
 from osverifier_reports.writer import source_snapshot
 
+from rethlas_osv.claude import claude_version
+
 from . import runs as run_tools
 from .jobs import JobManager
 from .replay import ReplayError, rebuild_command
 from .settings import (
+    BACKEND_DEFAULT_MODELS,
     load_settings,
     paper_argv,
     prove_argv,
@@ -122,6 +125,36 @@ class CodexTools:
             output = (login.stdout + login.stderr).strip()
             result["login_output"] = output
             result["logged_in"] = login.returncode == 0 and "not logged in" not in output.lower()
+        except (OSError, subprocess.SubprocessError) as exc:
+            result["error"] = f"{type(exc).__name__}: {exc}"
+        return result
+
+    def claude_status(self, settings: dict) -> dict:
+        """Version and sign-in of the configured Claude Code CLI (an optional backend).
+
+        Sign-in itself happens in a terminal (`claude`, then /login): the GUI never
+        handles Claude credentials."""
+        binary = shutil.which(settings["claude_bin"])
+        result = {"claude_bin": settings["claude_bin"], "path": binary, "version": None,
+                  "logged_in": None, "error": None}
+        if binary is None:
+            result["error"] = "Claude Code CLI not found; install it or set its path in Settings"
+            return result
+        environment = os.environ.copy()
+        if settings["claude_config_dir"]:
+            environment["CLAUDE_CONFIG_DIR"] = str(Path(settings["claude_config_dir"]).expanduser().resolve())
+        try:
+            result["version"] = claude_version(binary)
+            login = subprocess.run(
+                [binary, "auth", "status"], capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=15, env=environment, stdin=subprocess.DEVNULL,
+            )
+            try:
+                result["logged_in"] = bool(json.loads(login.stdout).get("loggedIn"))
+            except (ValueError, AttributeError):
+                result["logged_in"] = False
+        except RuntimeError as exc:  # too old for the flags the transport relies on
+            result["error"] = str(exc)
         except (OSError, subprocess.SubprocessError) as exc:
             result["error"] = f"{type(exc).__name__}: {exc}"
         return result
@@ -231,6 +264,7 @@ class App:
             "desktop": self.desktop,
             "version": _version(),
             "active_runs": self.jobs.shutdown_note(),
+            "backend_models": BACKEND_DEFAULT_MODELS,
         }
 
     # ---- runs -----------------------------------------------------------------
@@ -258,7 +292,11 @@ class App:
             raise ApiError(HTTPStatus.BAD_REQUEST, f"settings.{kind} must be an object")
         merged = {
             **base,
-            **{k: overrides[k] for k in ("codex_bin", "codex_home") if k in overrides},
+            **{
+                k: overrides[k]
+                for k in ("codex_bin", "codex_home", "claude_bin", "claude_config_dir")
+                if k in overrides
+            },
             kind: {**base[kind], **(overrides.get(kind) or {})},
         }
         try:
@@ -330,6 +368,8 @@ class App:
                 directory,
                 codex_bins=(settings["codex_bin"], self.defaults.get("codex_bin")),
                 codex_homes=(settings["codex_home"], self.defaults.get("codex_home")),
+                claude_bins=(settings["claude_bin"], self.defaults.get("claude_bin")),
+                claude_dirs=(settings["claude_config_dir"], self.defaults.get("claude_config_dir")),
             )
         except ReplayError as exc:
             raise ApiError(HTTPStatus.BAD_REQUEST, f"cannot resume this run: {exc}") from exc
@@ -504,7 +544,8 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json(self.app.update_settings(self._read_body()))
 
     def get_codex_status(self, query):
-        self._send_json(self.app.codex.status(self.app.settings()))
+        settings = self.app.settings()
+        self._send_json({**self.app.codex.status(settings), "claude": self.app.codex.claude_status(settings)})
 
     def get_codex_login(self, query):
         self._send_json(self.app.codex.login_state())

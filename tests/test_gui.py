@@ -13,6 +13,7 @@ import urllib.request
 import pytest
 from conftest import fake_codex, wait_for
 from osverifier import cli as verifier_cli
+from osverifier.backend import DEFAULT_MODEL as DEFAULT_MODEL_CODEX
 from osverifier.storage import read_json
 
 from rethlas_osv import cli as rethlas_cli
@@ -87,6 +88,57 @@ def test_argv_uses_exact_cli_flags(tmp_path):
     assert [a for a in deeper if a != "12"] == [a for a in argv if a != "10"]
     with pytest.raises(ValueError):
         with_max_rounds(argv, 0)
+
+
+def test_claude_backends_reach_the_prove_command_and_models_follow_the_switch(tmp_path):
+    from rethlas_osv.claude import DEFAULT_CLAUDE_MODEL
+
+    settings = validate_settings(
+        {
+            "claude_bin": "/opt/claude",
+            "claude_config_dir": "/tmp/claude-acct",
+            "prove": {"generator_backend": "claude", "verifier_backend": "claude"},
+        }
+    )
+    # Untouched Codex defaults become Claude defaults; an explicit choice is kept.
+    assert settings["prove"]["generator_model"] == DEFAULT_CLAUDE_MODEL
+    assert settings["prove"]["verifier_model"] == DEFAULT_CLAUDE_MODEL
+    kept = validate_settings(
+        {"prove": {"generator_backend": "claude", "generator_model": "claude-sonnet-5-5"}}
+    )
+    assert kept["prove"]["generator_model"] == "claude-sonnet-5-5"
+    assert kept["prove"]["verifier_model"] == DEFAULT_MODEL_CODEX
+    with pytest.raises(ValueError):
+        validate_settings({"prove": {"generator_backend": "gemini"}})
+
+    argv = prove_argv(tmp_path / "run", settings, tmp_path / "p.md")
+    parsed = rethlas_cli.parser().parse_args(argv[3:])
+    assert parsed.generator_backend == parsed.verifier_backend == "claude"
+    assert parsed.claude_bin == "/opt/claude" and str(parsed.claude_config_dir) == "/tmp/claude-acct"
+    codex_only = prove_argv(tmp_path / "run", validate_settings({}), tmp_path / "p.md")
+    assert "--claude-bin" not in codex_only
+
+
+def test_resume_checks_the_recorded_claude_binary_and_account(tmp_path):
+    from rethlas_osv_gui.replay import ReplayError, rebuild_command
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    settings = validate_settings(
+        {"claude_bin": "/opt/claude", "claude_config_dir": str(tmp_path / "acct"),
+         "prove": {"generator_backend": "claude"}}
+    )
+    argv = prove_argv(run_dir, settings, run_dir / "gui-inputs/problem.md")
+    job = {"kind": "prove", "argv": argv}
+    known = dict(codex_bins=("codex",), codex_homes=("",))
+    rebuilt = rebuild_command(
+        job, run_dir, **known, claude_bins=("/opt/claude",), claude_dirs=(str(tmp_path / "acct"),)
+    )
+    assert rebuilt[3:] == argv[3:]
+    with pytest.raises(ReplayError, match="Claude Code binary"):
+        rebuild_command(job, run_dir, **known, claude_bins=("claude",), claude_dirs=(str(tmp_path / "acct"),))
+    with pytest.raises(ReplayError, match="Claude Code account folder"):
+        rebuild_command(job, run_dir, **known, claude_bins=("/opt/claude",), claude_dirs=())
 
 
 # ---- run inspection ---------------------------------------------------------------

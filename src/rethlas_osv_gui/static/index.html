@@ -187,6 +187,8 @@ details summary { cursor: pointer; color: var(--muted); font-size: 14px; }
     </div>
     <h3>Quick settings (defaults come from the Settings tab)</h3>
     <div class="grid">
+      <div><label>Generator backend</label><select id="p-gbackend" onchange="followBackend('p-gbackend', 'p-gmodel')"><option value="codex">Codex</option><option value="claude">Claude Code</option></select></div>
+      <div><label>Verifier backend</label><select id="p-vbackend" onchange="followBackend('p-vbackend', 'p-vmodel')"><option value="codex">Codex</option><option value="claude">Claude Code</option></select></div>
       <div><label>Generator model</label><input type="text" id="p-gmodel" list="models"></div>
       <div><label>Generator reasoning effort</label><select id="p-geffort"><option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option></select></div>
       <div><label>Verifier model</label><input type="text" id="p-vmodel" list="models"></div>
@@ -222,6 +224,15 @@ details summary { cursor: pointer; color: var(--muted); font-size: 14px; }
       <div class="row"><button class="primary hidden" id="login-open" onclick="window.open($('login-open').dataset.url, '_blank')">Open the sign-in page</button><button class="secondary" onclick="cancelLogin()">Cancel sign-in</button></div>
       <pre id="login-output"></pre>
     </div></div>
+  </div>
+  <div class="panel">
+    <h2>Claude Code CLI (optional)</h2>
+    <p class="muted">Prove runs can use Claude Code for generation, for review, or both (choose the backends under Prove defaults or when starting a run). It uses your own Claude account: sign in once in a terminal by running <code>claude</code> and then <code>/login</code>. The GUI never handles Claude credentials.</p>
+    <div class="grid">
+      <div><label>Claude Code binary (name or full path)</label><input type="text" id="s-claude-bin"></div>
+      <div><label>Claude Code account folder (optional; CLAUDE_CONFIG_DIR)</label><input type="text" id="s-claude-config-dir" placeholder="leave empty for your own account"></div>
+    </div>
+    <div class="row"><button class="secondary" onclick="checkCodex(true)">Check Claude Code</button><span id="claude-detail" class="muted"></span></div>
   </div>
   <div class="panel">
     <h2>Verify defaults</h2>
@@ -308,7 +319,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 14px; }
   <div class="panel"><details class="fold">
     <summary>Suggestions for users</summary>
     <ol class="tips">
-      <li><div><b>You need a GPT subscription.</b> Everything stays on your computer: settings, every run with its inputs, reports, and execution records. Model calls go to OpenAI through the Codex CLI under your own account. Rethlas-OSV stores no credentials and sends nothing anywhere else.</div></li>
+      <li><div><b>You need a GPT subscription.</b> Everything stays on your computer: settings, every run with its inputs, reports, and execution records. Model calls go to OpenAI through the Codex CLI under your own account, or, for prove runs that select it, to Anthropic through the Claude Code CLI under your own Claude account. Rethlas-OSV stores no credentials and sends nothing anywhere else.</div></li>
       <li><div><b>Use it responsibly.</b> People hold different views on the future of mathematics and its protocols, but please make sure you intend to do good for the mathematical community and for humanity.</div></li>
       <li><div><b>Monitor the usage on your GPT account.</b> An agentic workflow can be expensive, since it calls the base model continuously.</div></li>
       <li><div><b>Attribute credit properly when generating proofs.</b> A generated solution may not properly credit previous work or ongoing work in the community.</div></li>
@@ -320,7 +331,7 @@ details summary { cursor: pointer; color: var(--muted); font-size: 14px; }
   </details></div>
 
 </section>
-<datalist id="models"><option value="gpt-6-astra"><option value="gpt-6.1-sol"><option value="gpt-5.6-sol"></datalist>
+<datalist id="models"><option value="gpt-6-astra"><option value="gpt-6.1-sol"><option value="gpt-5.6-sol"><option value="claude-opus-5-5"><option value="claude-sonnet-5-5"></datalist>
 </main>
 
 <script>
@@ -337,7 +348,9 @@ function setTheme(value) {
   const fromUrl = new URLSearchParams(location.search).get("theme");  // ?theme=dark|light|system
   setTheme(["light", "dark", "system"].includes(fromUrl) ? fromUrl : saved);
 })();
-const state = { settings: null, currentRun: null, eventsOffset: 0, timer: null, models: new Set(["gpt-6-astra", "gpt-6.1-sol", "gpt-5.6-sol"]), texts: {} };
+const state = { settings: null, currentRun: null, eventsOffset: 0, timer: null, texts: {},
+  models: new Set(["gpt-6-astra", "gpt-6.1-sol", "gpt-5.6-sol", "claude-opus-5-5", "claude-fable-5-1", "claude-sonnet-5-5", "claude-haiku-4-5-20251001"]),
+  backendModels: { codex: "gpt-6-astra", claude: "claude-opus-5-5" } };
 
 const VERIFY_FIELDS = [
   ["model", "Model", "text"], ["reasoning_effort", "Reasoning effort", "effort"], ["web_search", "Web search", "web"],
@@ -346,6 +359,7 @@ const VERIFY_FIELDS = [
   ["decompose", "Decomposed review", "bool"], ["early_stop", "Early stop on the first major mistake", "bool"],
 ];
 const PROVE_FIELDS = [
+  ["generator_backend", "Generator backend", "backend"], ["verifier_backend", "Verifier backend", "backend"],
   ["generator_model", "Generator model", "text"], ["generator_reasoning_effort", "Generator reasoning effort", "effort"],
   ["verifier_model", "Verifier model", "text"], ["verifier_reasoning_effort", "Verifier reasoning effort", "effort"],
   ["max_rounds", "Max rounds per branch", "number"], ["generation_branches", "Parallel branches", "number"],
@@ -355,7 +369,7 @@ const PROVE_FIELDS = [
   ["workers", "Concurrent verifier calls", "number"], ["max_issues", "Max issues (0 = no cap)", "number"],
   ["max_attempts", "Attempts per stage", "number"], ["decompose", "Decomposed review", "bool"], ["early_stop", "Early stop on the first major mistake", "bool"],
 ];
-const CHOICES = { effort: ["low", "medium", "high", "xhigh", "max"], web: ["live", "cached", "disabled"], policy: ["alternating", "live", "disabled"] };
+const CHOICES = { effort: ["low", "medium", "high", "xhigh", "max"], web: ["live", "cached", "disabled"], policy: ["alternating", "live", "disabled"], backend: ["codex", "claude"] };
 
 async function api(path, options = {}) {
   const response = await fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
@@ -406,6 +420,14 @@ function renderSettingsForm() {
   for (const [section, fields] of [["verify", VERIFY_FIELDS], ["prove", PROVE_FIELDS]]) {
     $(`s-${section}`).innerHTML = fields.map(([key, label, type]) => `<div><label>${label}</label>${fieldInput(section, key, type)}</div>`).join("");
   }
+  for (const role of ["generator", "verifier"]) {
+    $(`s-prove-${role}_backend`).onchange = () => followBackend(`s-prove-${role}_backend`, `s-prove-${role}_model`);
+  }
+}
+// A model still at the other backend's default follows a backend switch.
+function followBackend(backendId, modelId) {
+  const backend = $(backendId).value, model = $(modelId);
+  if (Object.entries(state.backendModels).some(([b, m]) => b !== backend && m === model.value)) model.value = state.backendModels[backend];
 }
 // Model fields accept any ID; suggestions come from the Codex account plus saved settings.
 function renderModels() {
@@ -415,6 +437,8 @@ function fillSettings(settings) {
   state.settings = settings;
   $("s-codex-bin").value = settings.codex_bin;
   $("s-codex-home").value = settings.codex_home || "";
+  $("s-claude-bin").value = settings.claude_bin;
+  $("s-claude-config-dir").value = settings.claude_config_dir || "";
   for (const [section, fields] of [["verify", VERIFY_FIELDS], ["prove", PROVE_FIELDS]]) {
     for (const [key, , type] of fields) {
       const el = $(`s-${section}-${key}`);
@@ -428,12 +452,14 @@ function fillSettings(settings) {
   $("v-model").value = settings.verify.model; $("v-effort").value = settings.verify.reasoning_effort;
   $("v-web").value = settings.verify.web_search; $("v-workers").value = settings.verify.workers;
   $("v-decompose").checked = settings.verify.decompose; $("v-early").checked = settings.verify.early_stop;
+  $("p-gbackend").value = settings.prove.generator_backend; $("p-vbackend").value = settings.prove.verifier_backend;
   $("p-gmodel").value = settings.prove.generator_model; $("p-geffort").value = settings.prove.generator_reasoning_effort;
   $("p-vmodel").value = settings.prove.verifier_model; $("p-veffort").value = settings.prove.verifier_reasoning_effort;
   $("p-rounds").value = settings.prove.max_rounds; $("p-branches").value = settings.prove.generation_branches;
 }
 function readSettingsForm() {
-  const out = { codex_bin: $("s-codex-bin").value, codex_home: $("s-codex-home").value, verify: {}, prove: {} };
+  const out = { codex_bin: $("s-codex-bin").value, codex_home: $("s-codex-home").value,
+    claude_bin: $("s-claude-bin").value, claude_config_dir: $("s-claude-config-dir").value, verify: {}, prove: {} };
   for (const [section, fields] of [["verify", VERIFY_FIELDS], ["prove", PROVE_FIELDS]]) {
     for (const [key, , type] of fields) {
       const el = $(`s-${section}-${key}`);
@@ -463,6 +489,8 @@ async function checkCodex(verbose) {
     $("codex-detail").textContent = s.error || `${s.path} · ${s.version} · ${s.login_output || ""}`;
     $("about-codex").textContent = s.error ? "Codex CLI not found" : `${s.version}${s.logged_in ? ", signed in" : ", not signed in"}`;
     $("about-codex-line").textContent = s.error ? s.error : (s.logged_in ? "Signed in; you can start a run." : "Not signed in: sign in with your own Codex subscription first.");
+    const c = s.claude || {};
+    $("claude-detail").textContent = c.error || `${c.path} · ${c.version} · ${c.logged_in ? "signed in" : "not signed in: run claude, then /login, in a terminal"}`;
   } catch (e) { pill.textContent = "Codex: check failed"; pill.className = "badge bad"; if (verbose) $("codex-detail").textContent = e.message; }
 }
 let loginPoll = null;
@@ -519,7 +547,7 @@ async function startProve() {
   try {
     const run = await api("/api/runs", { method: "POST", body: JSON.stringify({
       kind: "prove", name: $("p-name").value, problem: $("p-problem").value,
-      settings: { prove: { generator_model: $("p-gmodel").value, generator_reasoning_effort: $("p-geffort").value,
+      settings: { prove: { generator_backend: $("p-gbackend").value, verifier_backend: $("p-vbackend").value, generator_model: $("p-gmodel").value, generator_reasoning_effort: $("p-geffort").value,
         verifier_model: $("p-vmodel").value, verifier_reasoning_effort: $("p-veffort").value,
         max_rounds: Number($("p-rounds").value), generation_branches: Number($("p-branches").value) } } }) });
     showTab("runs"); openRun(run.name);
@@ -859,6 +887,7 @@ document.addEventListener("click", (event) => {
   renderSettingsForm();
   try {
     const st = await api("/api/state");
+    if (st.backend_models) state.backendModels = st.backend_models;
     fillSettings(st.settings);
     $("runs-root").textContent = `Run folders live in ${st.runs_root}`;
     if (st.desktop) $("quit-btn").classList.remove("hidden");

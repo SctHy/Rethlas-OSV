@@ -94,6 +94,47 @@ Use `--codex-bin /path/to/codex` if the working CLI is not on PATH, and optional
 global skill installation, or desktop-account change is performed by this integration.
 On macOS, a bundled CLI may be at `/Applications/ChatGPT.app/Contents/Resources/codex`.
 
+### Claude Code backends
+
+Prove runs can use [Claude Code](https://code.claude.com) instead of Codex for generation
+(`--generator-backend claude`), for the verifier's review roles (`--verifier-backend claude`),
+or both. Install Claude Code 2.1.287 or newer and sign in once by running `claude` and then
+`/login` in a terminal. The integration uses your own account. Choose a separate account
+folder with `--claude-config-dir` (`CLAUDE_CONFIG_DIR`) if you like, and point to a binary that
+is not on your PATH with `--claude-bin`. A model left unset defaults to `claude-opus-5-5` for
+a Claude backend.
+
+```bash
+uv run rethlas-osv --problem problem.md --run-dir runs/claude-problem \
+  --generator-backend claude --verifier-backend claude \
+  --generator-model claude-opus-5-5 --verifier-model claude-opus-5-5
+```
+
+Every call runs `claude -p` with JSON streaming and structured output, isolated from your
+own Claude Code setup: no user or project settings, CLAUDE.md, skills, plugins, hooks,
+other MCP servers, or auto-memory. `--restricted` confines the file tools to the working
+directory, and Claude Code's sandbox confines Bash writes to it. Generation turns get the
+experiment-local memory MCP server, Read/Write/Edit/Glob/Grep/Bash, and the web tools and
+shell network access only on turns whose search is enabled. Review roles get
+Read/Glob/Grep and sandboxed Bash for calculations, without shell network. Web search
+modes map to WebSearch (`cached`) or WebSearch and WebFetch (`live`), because Claude Code
+has no cached search.
+
+Differences from Codex to be aware of:
+
+- Reading is not confined, as with Codex. Generator isolation from review records
+  remains instruction-level.
+- Claude Code subagents cannot spawn subagents. Any positive `--agent-depth` enables the
+  `subgoal-prover` subagent at depth one, and `--agent-threads` is recorded but not enforced.
+- On Linux, Claude Code's Bash sandbox needs bubblewrap. Without it, Bash commands fail
+  rather than running unsandboxed.
+- Quota is recognized only from a rejected rate-limit event (with no overage in use) or
+  an error result naming an exhausted usage limit, and recorded like Codex quota.
+- Plain verification in the GUI and `osverify verify` still use Codex; the Claude
+  verifier backend applies to prove runs.
+
+Switching a backend changes the frozen manifest, so it needs a fresh run directory.
+
 Reference files in a sibling `problem.refs/` directory are included automatically,
 or pass `--references /path/to/references`. PDFs require Poppler's `pdftotext` and
 are extracted in the generation workspace. These are generator context, not added

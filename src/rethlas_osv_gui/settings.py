@@ -9,6 +9,11 @@ from osverifier.backend import DEFAULT_MODEL
 from osverifier.frozen import python_module_command
 from osverifier.storage import atomic_json, read_json
 
+from rethlas_osv.claude import DEFAULT_CLAUDE_MODEL
+
+BACKENDS = ("codex", "claude")
+# Each backend's default model; switching a backend swaps an untouched default.
+BACKEND_DEFAULT_MODELS = {"codex": DEFAULT_MODEL, "claude": DEFAULT_CLAUDE_MODEL}
 REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 WEB_SEARCH_MODES = ("disabled", "cached", "live")
 SEARCH_POLICIES = ("alternating", "live", "disabled")
@@ -20,6 +25,8 @@ SEARCH_POLICIES = ("alternating", "live", "disabled")
 DEFAULTS: dict = {
     "codex_bin": "codex",
     "codex_home": "",
+    "claude_bin": "claude",
+    "claude_config_dir": "",
     "verify": {
         "model": DEFAULT_MODEL,
         "reasoning_effort": "xhigh",
@@ -32,6 +39,8 @@ DEFAULTS: dict = {
         "early_stop": False,
     },
     "prove": {
+        "generator_backend": "codex",
+        "verifier_backend": "codex",
         "generator_model": DEFAULT_MODEL,
         "generator_reasoning_effort": "xhigh",
         "verifier_model": DEFAULT_MODEL,
@@ -110,7 +119,7 @@ def validate_settings(raw: dict) -> dict:
     if not isinstance(raw, dict):
         raise ValueError("settings must be an object")
     merged = copy.deepcopy(DEFAULTS)
-    for key in ("codex_bin", "codex_home"):
+    for key in ("codex_bin", "codex_home", "claude_bin", "claude_config_dir"):
         if key in raw:
             merged[key] = raw[key]
     for section in ("verify", "prove"):
@@ -121,16 +130,15 @@ def validate_settings(raw: dict) -> dict:
         if unknown:
             raise ValueError(f"unknown {section} setting: {sorted(unknown)[0]}")
         merged[section].update(incoming)
-    codex_bin = merged["codex_bin"]
-    if not isinstance(codex_bin, str) or not codex_bin.strip():
-        raise ValueError("codex_bin must be a nonblank string")
-    merged["codex_bin"] = codex_bin.strip()
-    codex_home = merged["codex_home"]
-    if codex_home is None:
-        codex_home = ""
-    if not isinstance(codex_home, str):
-        raise ValueError("codex_home must be a string")
-    merged["codex_home"] = codex_home.strip()
+    for key in ("codex_bin", "claude_bin"):
+        if not isinstance(merged[key], str) or not merged[key].strip():
+            raise ValueError(f"{key} must be a nonblank string")
+        merged[key] = merged[key].strip()
+    for key in ("codex_home", "claude_config_dir"):
+        value = "" if merged[key] is None else merged[key]
+        if not isinstance(value, str):
+            raise ValueError(f"{key} must be a string")
+        merged[key] = value.strip()
 
     v = merged["verify"]
     merged["verify"] = {
@@ -147,7 +155,15 @@ def validate_settings(raw: dict) -> dict:
         "early_stop": _bool("verify", "early_stop", v["early_stop"]),
     }
     p = merged["prove"]
+    for role in ("generator", "verifier"):
+        backend = _choice("prove", f"{role}_backend", p[f"{role}_backend"], BACKENDS)
+        # A model left at the other backend's default follows the backend switch.
+        others = {m for b, m in BACKEND_DEFAULT_MODELS.items() if b != backend}
+        if p[f"{role}_model"] in others:
+            p[f"{role}_model"] = BACKEND_DEFAULT_MODELS[backend]
     merged["prove"] = {
+        "generator_backend": p["generator_backend"],
+        "verifier_backend": p["verifier_backend"],
         "generator_model": _text("prove", "generator_model", p["generator_model"]),
         "generator_reasoning_effort": _choice(
             "prove",
@@ -332,6 +348,11 @@ def prove_argv(run_dir: Path, settings: dict, problem: Path) -> list[str]:
     ]
     if p["max_issues"] is not None:
         argv += ["--max-issues", str(p["max_issues"])]
+    argv += ["--generator-backend", p["generator_backend"], "--verifier-backend", p["verifier_backend"]]
+    if "claude" in (p["generator_backend"], p["verifier_backend"]):
+        argv += ["--claude-bin", settings["claude_bin"]]
+        if settings["claude_config_dir"]:
+            argv += ["--claude-config-dir", settings["claude_config_dir"]]
     if not p["decompose"]:
         argv.append("--root-only")
     elif not p["early_stop"]:

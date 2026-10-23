@@ -25,6 +25,7 @@ from osverifier.storage import (
 )
 
 from . import workspace as workspace_files
+from .claude import ClaudeBackend
 from .contracts import (
     ExperimentResult,
     GenerationTurn,
@@ -333,7 +334,7 @@ class Experiment:
                     "review_artifact": str(interruption.relative_to(directory)),
                 },
             )
-            state.error = RESUME_MESSAGE
+            state.error = read_json(interruption).get("message") or RESUME_MESSAGE
             self.emit(
                 directory,
                 "quota_exhausted",
@@ -394,7 +395,7 @@ class Experiment:
 
     def verify_candidate(self, request, review_dir):
         verifier = self.verifier
-        if isinstance(verifier.backend, CodexBackend):
+        if isinstance(verifier.backend, (CodexBackend, ClaudeBackend)):
             # Rejection cancels a review's backend. Its stop state must not leak to
             # another candidate/branch; a fresh instance still reuses disk caches.
             backend = replace(verifier.backend)

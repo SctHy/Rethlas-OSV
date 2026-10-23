@@ -19,7 +19,7 @@ from pathlib import Path
 from osverifier.frozen import ENTRY_FLAG, python_module_command
 from osverifier_reports.paper_prepare import MODES
 
-from .settings import REASONING_EFFORTS, SEARCH_POLICIES, WEB_SEARCH_MODES
+from .settings import BACKENDS, REASONING_EFFORTS, SEARCH_POLICIES, WEB_SEARCH_MODES
 
 # The module each GUI command role launches. When an entry point moves, change it here
 # and keep the old name in FORMER_MODULES so runs recorded by earlier releases resume.
@@ -41,10 +41,19 @@ class ReplayError(ValueError):
 
 
 class _Context:
-    def __init__(self, run_dir: Path, codex_bins: Iterable[str], codex_homes: Iterable[str]):
+    def __init__(
+        self,
+        run_dir: Path,
+        codex_bins: Iterable[str],
+        codex_homes: Iterable[str],
+        claude_bins: Iterable[str] = (),
+        claude_dirs: Iterable[str] = (),
+    ):
         self.run_dir = run_dir.resolve()
         self.codex_bins = {b for b in codex_bins if b}
         self.codex_homes = {h for h in codex_homes if h is not None}
+        self.claude_bins = {b for b in claude_bins if b}
+        self.claude_dirs = {d for d in claude_dirs if d}
 
 
 Check = Callable[[str, _Context], None]
@@ -118,18 +127,35 @@ def _which(value: str) -> Path | None:
     return Path(found).resolve() if found else None
 
 
-def _codex_bin(value: str, context: _Context) -> None:
+def _known_binary(value: str, known: set[str], product: str) -> None:
     # A relative path would resolve inside the run folder, which the child uses as cwd.
     if os.sep in value and not os.path.isabs(value):
-        raise ReplayError(f"the stored Codex binary is a relative path: {value!r}")
-    if value in context.codex_bins:
+        raise ReplayError(f"the stored {product} binary is a relative path: {value!r}")
+    if value in known:
         return
     resolved = _which(value)
-    if resolved is not None and any(_which(b) == resolved for b in context.codex_bins):
+    if resolved is not None and any(_which(b) == resolved for b in known):
         return
     raise ReplayError(
-        f"this run was started with the Codex binary {value!r}, which is neither the one "
-        "in Settings nor the bundled one; set Settings → Codex binary to it to resume"
+        f"this run was started with the {product} binary {value!r}, which is neither the one "
+        f"in Settings nor the bundled one; set Settings → {product} binary to it to resume"
+    )
+
+
+def _codex_bin(value: str, context: _Context) -> None:
+    _known_binary(value, context.codex_bins, "Codex")
+
+
+def _claude_bin(value: str, context: _Context) -> None:
+    _known_binary(value, context.claude_bins, "Claude Code")
+
+
+def _claude_config_dir(value: str, context: _Context) -> None:
+    if any(Path(d).expanduser().resolve() == Path(value).expanduser().resolve() for d in context.claude_dirs):
+        return
+    raise ReplayError(
+        f"this run uses the Claude Code account folder {value}, which is not the one in "
+        "Settings; set Settings → Claude Code account folder to it to resume"
     )
 
 
@@ -203,6 +229,10 @@ PROVE = {
     "--max-issues": _int(1),
     "--root-only": SWITCH,
     "--no-early-stop": SWITCH,
+    "--generator-backend": _choice(BACKENDS),
+    "--verifier-backend": _choice(BACKENDS),
+    "--claude-bin": _claude_bin,
+    "--claude-config-dir": _claude_config_dir,
 }
 
 
@@ -266,7 +296,13 @@ def _verify(tokens: list[str], context: _Context) -> list[str]:
 
 
 def rebuild_command(
-    job: dict, run_dir: Path, *, codex_bins: Iterable[str], codex_homes: Iterable[str]
+    job: dict,
+    run_dir: Path,
+    *,
+    codex_bins: Iterable[str],
+    codex_homes: Iterable[str],
+    claude_bins: Iterable[str] = (),
+    claude_dirs: Iterable[str] = (),
 ) -> list[str]:
     """The command to resume ``run_dir`` with, rebuilt from its validated record."""
     argv = job.get("argv") if isinstance(job, dict) else None
@@ -275,7 +311,7 @@ def rebuild_command(
         raise ReplayError("the stored job record is malformed")
     if not all(isinstance(a, str) for a in argv):
         raise ReplayError("the stored command is malformed")
-    context = _Context(run_dir, codex_bins, codex_homes)
+    context = _Context(run_dir, codex_bins, codex_homes, claude_bins, claude_dirs)
     role, rest = _entry(argv, ROLES_BY_KIND[kind])
     if role == "verify":
         return _verify(rest, context)

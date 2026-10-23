@@ -70,6 +70,17 @@ def installation_defaults(home: Path) -> dict:
     defaults = {"codex_home": str(home / "codex-home")}
     if codex is not None:
         defaults["codex_bin"] = str(codex)
+    if shutil.which("claude") is None:
+        # Claude Code is optional and never bundled; it keeps the user's own account.
+        for candidate in (
+            "/opt/homebrew/bin/claude",
+            "/usr/local/bin/claude",
+            Path.home() / ".local/bin/claude",
+            Path.home() / ".claude/local/claude",
+        ):
+            if Path(candidate).is_file():
+                defaults["claude_bin"] = str(candidate)
+                break
     return defaults
 
 
