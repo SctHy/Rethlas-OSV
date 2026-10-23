@@ -15,7 +15,7 @@ result or an estimate of mathematical detection quality.
 - Pinned Rethlas source: `887cc46427636bbdd235160a112f9a30ae81d040`.
 
 ```bash
-uv sync --extra rethlas
+uv sync
 uv run rethlas-osv \
   --run-dir runs/rethlas_e2e_smoke_20260913_v2 \
   --max-rounds 2 --agent-depth 0 \

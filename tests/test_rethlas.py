@@ -453,6 +453,41 @@ def test_memory_server_refuses_links_out_of_the_workspace(tmp_path):
     assert (tmp_path / "plain/memory/problem/proof_steps.jsonl").read_text().count("\n") == 1
 
 
+def test_memory_meta_is_replaced_atomically_and_recovers_from_a_torn_file(tmp_path):
+    import itertools
+    import os
+
+    from rethlas_osv.memory_server import WorkspaceMemory, load_upstream
+
+    upstream = load_upstream()
+    stamps = (f"2026-01-01T00:{i:05.2f}Z" for i in itertools.count())
+    upstream._utc_now = lambda: next(stamps)
+    memory = WorkspaceMemory(upstream, tmp_path / "workspace")
+    meta = tmp_path / "workspace/memory/problem/meta.json"
+
+    memory.memory_init("problem")
+    first = json.loads(meta.read_text())
+    memory.memory_append("problem", "proof_steps", {"t": 1})
+    later = json.loads(meta.read_text())
+    assert later["created_at_utc"] == first["created_at_utc"]
+    assert later["updated_at_utc"] > first["updated_at_utc"]
+    assert sorted(p.name for p in meta.parent.iterdir() if p.name.startswith(".")) == []
+
+    # An interrupted write under the old truncate-then-write scheme left partial JSON.
+    meta.write_text('{"problem_id": "prob')
+    memory.memory_append("problem", "proof_steps", {"t": 2})
+    assert json.loads(meta.read_text())["problem_id"] == "problem"
+    assert (meta.parent / "proof_steps.jsonl").read_text().count("\n") == 2
+
+    outside = tmp_path / "outside.json"
+    outside.write_text("USER DATA")
+    meta.unlink()
+    os.symlink(outside, meta)
+    with pytest.raises(ValueError, match="memory file"):
+        memory.memory_init("problem")
+    assert outside.read_text() == "USER DATA"
+
+
 def test_theorem_search_exposes_only_query_and_result_count(tmp_path, monkeypatch):
     fastmcp = pytest.importorskip("fastmcp")
     requests = pytest.importorskip("requests")

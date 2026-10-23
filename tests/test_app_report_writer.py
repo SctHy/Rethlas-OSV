@@ -96,6 +96,18 @@ def test_gui_report_job_is_separate_and_requires_stopped_input(served, monkeypat
     assert client.call("GET", f"/api/report-drafts/{body['draft_id']}/download")[0] == 404
 
 
+def test_gui_report_job_start_failure_is_a_conflict(served, monkeypatch):
+    app, client = served
+    make_source(app.runs_root / "example")
+
+    def refuse(*args, **kwargs):
+        raise OSError("cannot launch writer")
+
+    monkeypatch.setattr(app.jobs, "start", refuse)
+    status, body = client.call("POST", "/api/runs/example/report-draft", {})
+    assert status == 409 and "cannot launch writer" in body["error"]
+
+
 def test_gui_draft_end_to_end_with_scripted_codex(served, tmp_path):
     import sys
     import urllib.request

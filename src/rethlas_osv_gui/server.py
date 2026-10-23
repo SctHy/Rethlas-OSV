@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import ipaddress
 import json
 import os
@@ -88,7 +87,6 @@ class CodexTools:
             "logged_in": None,
             "login_output": None,
             "error": None,
-            "prove_available": importlib.util.find_spec("fastmcp") is not None,
             "models": available_models(settings.get("codex_home")),
             "default_model": DEFAULT_MODEL,
         }
@@ -263,11 +261,6 @@ class App:
             settings = validate_settings(merged)
         except ValueError as exc:
             raise ApiError(HTTPStatus.BAD_REQUEST, str(exc)) from exc
-        if kind == "prove" and importlib.util.find_spec("fastmcp") is None:
-            raise ApiError(
-                HTTPStatus.BAD_REQUEST,
-                "proving needs the rethlas extra: run `uv sync --extra rethlas`",
-            )
         directory = run_tools.unique_run_dir(self.runs_root, name)
         inputs = directory / run_tools.INPUTS_DIR
         if kind == "verify" and body.get("paper") is not None:
@@ -385,7 +378,7 @@ ROUTES = [
 
 class Handler(BaseHTTPRequestHandler):
     app: App  # set on the server class
-    server_version = "RethlasOSV/0.1"
+    server_version = "RethlasOSV"
 
     def log_message(self, format, *args):  # noqa: A002 - BaseHTTPRequestHandler signature
         if os.environ.get("OSVERIFIER_GUI_LOG"):
@@ -578,7 +571,10 @@ class Handler(BaseHTTPRequestHandler):
         ]
         if settings["codex_home"]:
             argv += ["--codex-home", settings["codex_home"]]
-        self.app.jobs.start(output, "report", argv, settings, resume=False)
+        try:
+            self.app.jobs.start(output, "report", argv, settings, resume=False)
+        except (OSError, RuntimeError) as exc:
+            raise ApiError(HTTPStatus.CONFLICT, str(exc)) from exc
         self._send_json({"draft_id": draft_id}, HTTPStatus.ACCEPTED)
 
     def get_report_draft(self, query, draft_id):
@@ -634,15 +630,6 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(HTTPStatus.BAD_REQUEST, str(exc)) from exc
         if detail is None:
             raise ApiError(HTTPStatus.NOT_FOUND, "review not found")
-        from osverifier_reports.automatic import report_directory
-
-        source = self.app.run_dir(name)
-        if (source / "report.json").exists():
-            status_path = report_directory(source) / "status.json"
-            if status_path.exists():
-                detail["template_report"] = read_json(status_path)
-                if detail["template_report"]["status"] == "running" and not self.app.jobs.is_active(source):
-                    detail["template_report"] = {"status": "failed", "error": "Report process stopped; resume to retry."}
         self._send_json(detail)
 
 

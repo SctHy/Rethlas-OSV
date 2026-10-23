@@ -463,8 +463,6 @@ async function checkCodex(verbose) {
     $("codex-detail").textContent = s.error || `${s.path} · ${s.version} · ${s.login_output || ""}`;
     $("about-codex").textContent = s.error ? "Codex CLI not found" : `${s.version}${s.logged_in ? ", signed in" : ", not signed in"}`;
     $("about-codex-line").textContent = s.error ? s.error : (s.logged_in ? "Signed in; you can start a run." : "Not signed in: sign in with your own Codex subscription first.");
-    $("p-note").textContent = s.prove_available ? "" : "Proving needs the rethlas extra (uv sync --extra rethlas).";
-    $("p-start").disabled = !s.prove_available;
   } catch (e) { pill.textContent = "Codex: check failed"; pill.className = "badge bad"; if (verbose) $("codex-detail").textContent = e.message; }
 }
 let loginPoll = null;

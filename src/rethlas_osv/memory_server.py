@@ -18,6 +18,7 @@ import errno
 import importlib.util
 import json
 import os
+import secrets
 import stat
 from contextlib import contextmanager
 from pathlib import Path
@@ -75,7 +76,7 @@ class WorkspaceMemory:
                 os.close(fd)
 
     @staticmethod
-    def open(directory: int, name: str, flags: int, *, truncate=False) -> int:
+    def open(directory: int, name: str, flags: int) -> int:
         try:
             fd = os.open(name, flags | _NOFOLLOW, 0o666, dir_fd=directory)
         except OSError as exc:
@@ -87,9 +88,26 @@ class WorkspaceMemory:
             os.close(fd)
             raise ValueError(f"memory file {name!r} must be a regular, singly linked file")
         os.set_blocking(fd, True)
-        if truncate:
-            os.ftruncate(fd, 0)
         return fd
+
+    @staticmethod
+    def replace(directory: int, name: str, text: str) -> None:
+        """Write a new file and rename it over ``name``; an interruption leaves the old one."""
+        temporary = f".{name}.{secrets.token_hex(8)}"
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | _NOFOLLOW, 0o666, dir_fd=directory)
+        try:
+            os.set_blocking(fd, True)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(text)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, name, src_dir_fd=directory, dst_dir_fd=directory)
+        except BaseException:
+            try:
+                os.unlink(temporary, dir_fd=directory)
+            except FileNotFoundError:
+                pass
+            raise
 
     def channel_file(self, channel: str) -> str:
         files = self.upstream.CHANNEL_FILES
@@ -139,21 +157,22 @@ class WorkspaceMemory:
             if fd is not None:
                 with os.fdopen(fd, encoding="utf-8") as handle:
                     text = handle.read()
-                if text:
-                    loaded = json.loads(text)
-                    if isinstance(loaded, dict):
-                        existing_meta = loaded
+                try:
+                    loaded = json.loads(text) if text else None
+                except json.JSONDecodeError:
+                    # Only timestamps live here; a torn file must not disable memory.
+                    loaded = None
+                if isinstance(loaded, dict):
+                    existing_meta = loaded
             merged_meta: Dict[str, Any] = {
                 "problem_id": sanitized,
                 "created_at_utc": existing_meta.get("created_at_utc", upstream._utc_now()),
+                **existing_meta,
                 "updated_at_utc": upstream._utc_now(),
             }
-            merged_meta.update(existing_meta)
             if meta:
                 merged_meta.update(meta)
-            fd = self.open(directory, "meta.json", os.O_WRONLY | os.O_CREAT, truncate=True)
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(merged_meta, handle, indent=2, ensure_ascii=False)
+            self.replace(directory, "meta.json", json.dumps(merged_meta, indent=2, ensure_ascii=False))
         return {
             "problem_id": sanitized,
             "memory_dir": str(problem_dir),
