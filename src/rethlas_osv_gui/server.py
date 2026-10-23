@@ -48,6 +48,7 @@ STATIC_FILES = {
     "/index.html": ("index.html", "text/html; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/app.css": ("app.css", "text/css; charset=utf-8"),
+    "/vendor/pico.min.css": ("vendor/pico.min.css", "text/css; charset=utf-8"),
 }
 DEFAULT_HOME = Path("~/.osverifier").expanduser()
 # Names a browser may use for this server. Anything else in the Host header means the

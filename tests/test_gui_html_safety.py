@@ -45,10 +45,14 @@ def test_only_the_page_files_are_served(served):
     import urllib.error
     import urllib.request
 
-    for path, kind in (("/", "text/html"), ("/app.js", "text/javascript"), ("/app.css", "text/css")):
+    served_files = (
+        ("/", "text/html"), ("/app.js", "text/javascript"), ("/app.css", "text/css"),
+        ("/vendor/pico.min.css", "text/css"),
+    )
+    for path, kind in served_files:
         with urllib.request.urlopen(client.base + path) as response:
             assert response.headers["Content-Type"].startswith(kind)
-    for path in ("/server.py", "/static/app.js", "/../server.py", "/app.js.map"):
+    for path in ("/server.py", "/static/app.js", "/../server.py", "/app.js.map", "/vendor/PICO-LICENSE.md"):
         with pytest.raises(urllib.error.HTTPError) as refused:
             urllib.request.urlopen(client.base + path)
         assert refused.value.code == 404
