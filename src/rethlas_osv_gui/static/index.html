@@ -645,7 +645,7 @@ function stopPolling() { if (state.timer) clearTimeout(state.timer); state.timer
 function closeRun() { stopPolling(); state.currentRun = null; history.replaceState(null, "", "#runs"); $("run-detail").classList.add("hidden"); $("runs-list").classList.remove("hidden"); loadRuns(); }
 
 async function openRun(name) {
-  stopPolling(); state.currentRun = name; state.eventsOffset = 0;
+  stopPolling(); state.currentRun = name; state.eventsOffset = 0; state.inputs = null;
   history.replaceState(null, "", "#run/" + encodeURIComponent(name));
   $("runs-list").classList.add("hidden"); $("run-detail").classList.remove("hidden");
   $("run-detail").innerHTML = `<div class="panel"><p class="muted">Loading ${esc(name)}…</p></div>`;
@@ -673,10 +673,13 @@ function summaryLines(d) {
 
 async function refreshRun(full) {
   const name = state.currentRun; if (!name) return;
+  // Inputs never change once a run starts: fetch them only when the page is rebuilt.
+  const rebuild = full || !$("rd-status") || !state.inputs;
   let d;
-  try { d = await api(`/api/runs/${encodeURIComponent(name)}`); } catch (e) { $("run-detail").innerHTML = `<div class="panel"><div class="error">${esc(e.message)}</div><button class="secondary" onclick="closeRun()">Back</button></div>`; return; }
+  try { d = await api(`/api/runs/${encodeURIComponent(name)}${rebuild ? "" : "?inputs=0"}`); } catch (e) { $("run-detail").innerHTML = `<div class="panel"><div class="error">${esc(e.message)}</div><button class="secondary" onclick="closeRun()">Back</button></div>`; return; }
   if (state.currentRun !== name) return;
-  if (full || !$("rd-status")) {
+  if (rebuild) state.inputs = d.inputs || {};
+  if (rebuild) {
     $("run-detail").innerHTML = `
       <div class="panel">
         <div class="row"><button class="secondary" onclick="closeRun()">← Runs</button><h2 style="margin:0">${esc(d.name)}</h2><span class="badge">${d.kind === "prove" ? "prove" : "verify"}</span><span id="rd-status"></span><span id="rd-decision"></span><span style="flex:1"></span>
@@ -692,7 +695,7 @@ async function refreshRun(full) {
       <div class="panel"><h2>Inputs</h2><div id="rd-inputs"></div></div>
       <div class="panel"><h2>Activity</h2><p class="muted">Internal execution trace. Prose here is not released feedback.</p><div class="events" id="rd-events"></div></div>
       <div class="panel"><details><summary>Process log (stderr)</summary><pre id="rd-stderr"></pre></details></div>`;
-    const inputs = d.inputs || {};
+    const inputs = state.inputs;
     $("rd-inputs").innerHTML = d.kind === "prove"
       ? `<h3>Problem</h3>${numbered(inputs.problem)}`
       : `<h3>Question</h3>${numbered(inputs.question)}<h3>Candidate solution (line numbers as cited in feedback)</h3>${numbered(inputs.solution)}`;
@@ -725,7 +728,7 @@ async function refreshRun(full) {
           `<table><thead><tr><th>#</th><th>Result</th><th>Label</th><th>Role</th><th>Why selected</th></tr></thead><tbody>` +
           x.targets.map((t, i) => `<tr><td>${i + 1}</td><td>${esc(t.name)}</td><td><code>${esc(t.label || "")}</code></td><td>${esc(t.role)}</td><td class="muted">${esc(t.reason)}</td></tr>`).join("") + `</tbody></table>` +
           `<details style="margin-top:8px"><summary>Full question text</summary><div class="md" id="rd-question"></div></details>`;
-        renderMarkdown($("rd-question"), d.inputs.question);
+        renderMarkdown($("rd-question"), state.inputs.question);
       } else {
         $("rd-focus").innerHTML = `<p class="muted">Mode: ${esc(modeLabel)}. ${d.status === "running" ? "Preparing the question from the paper…" : "The question was not prepared; see the process log below."}</p>`;
       }

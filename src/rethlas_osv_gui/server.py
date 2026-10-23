@@ -385,14 +385,25 @@ class Handler(BaseHTTPRequestHandler):
             super().log_message(format, *args)
 
     # ---- plumbing --------------------------------------------------------------
-    def _send_json(self, payload, status=HTTPStatus.OK):
-        data = json.dumps(payload, ensure_ascii=False).encode()
+    def _send_bytes(self, data: bytes, content_type: str, *, filename=None, status=HTTPStatus.OK):
         self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Type", content_type)
+        if filename is not None:
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
+
+    def _send_json(self, payload, status=HTTPStatus.OK):
+        data = json.dumps(payload, ensure_ascii=False).encode()
+        self._send_bytes(data, "application/json; charset=utf-8", status=status)
+
+    def _review_dir(self, directory: Path, key) -> Path:
+        try:
+            return directory / "reviews" / run_tools.valid_review_key(key)
+        except ValueError as exc:
+            raise ApiError(HTTPStatus.BAD_REQUEST, str(exc)) from exc
 
     def _read_body(self) -> dict:
         length = int(self.headers.get("Content-Length") or 0)
@@ -449,13 +460,7 @@ class Handler(BaseHTTPRequestHandler):
             )
 
     def _send_static(self, name: str, content_type: str):
-        data = (STATIC / name).read_bytes()
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(data)
+        self._send_bytes((STATIC / name).read_bytes(), content_type)
 
     def do_GET(self):  # noqa: N802
         self._dispatch("GET")
@@ -509,16 +514,12 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(HTTPStatus.NOT_FOUND, "Template PDF is not ready")
         partial = read_json(directory / "status.json").get("partial", False)
         data = (directory / "partial" / "report.pdf" if partial else directory / "report.pdf").read_bytes()
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", "application/pdf")
-        self.send_header("Content-Disposition", 'attachment; filename="referee-report.pdf"')
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(data)
+        self._send_bytes(data, "application/pdf", filename="referee-report.pdf")
 
     def get_run(self, query, name):
-        detail = run_tools.run_detail(self.app.run_dir(name), self.app.jobs)
+        detail = run_tools.run_detail(
+            self.app.run_dir(name), self.app.jobs, inputs=query.get("inputs") != "0"
+        )
         if detail is None:
             raise ApiError(HTTPStatus.NOT_FOUND, "not a verifier run directory")
         from osverifier_reports.automatic import report_directory
@@ -550,9 +551,7 @@ class Handler(BaseHTTPRequestHandler):
         directory = self.app.run_dir(name)
         key = body.get("review")
         if key:
-            if not isinstance(key, str) or "/" in key or "\\" in key or key.startswith("."):
-                raise ApiError(HTTPStatus.BAD_REQUEST, "invalid review key")
-            directory = directory / "reviews" / key
+            directory = self._review_dir(directory, key)
         if not directory.resolve().is_relative_to(self.app.runs_root.resolve()):
             raise ApiError(HTTPStatus.BAD_REQUEST, "invalid source path")
         try:
@@ -592,20 +591,12 @@ class Handler(BaseHTTPRequestHandler):
         if not (directory / "status.json").is_file() or read_json(directory / "status.json").get("status") != "completed":
             raise ApiError(HTTPStatus.NOT_FOUND, "No editorially approved report is available")
         data = (directory / "report.tex").read_bytes()
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", "application/x-tex; charset=utf-8")
-        self.send_header("Content-Disposition", 'attachment; filename="referee-report.tex"')
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(data)
+        self._send_bytes(data, "application/x-tex; charset=utf-8", filename="referee-report.tex")
 
     def get_export(self, query, name, key=None):
         directory = self.app.run_dir(name)
         if key is not None:
-            if "/" in key or "\\" in key or key.startswith("."):
-                raise ApiError(HTTPStatus.BAD_REQUEST, "invalid review key")
-            directory = directory / "reviews" / key
+            directory = self._review_dir(directory, key)
         if not directory.resolve().is_relative_to(self.app.runs_root.resolve()):
             raise ApiError(HTTPStatus.BAD_REQUEST, "invalid export path")
         try:
@@ -614,14 +605,7 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(HTTPStatus.NOT_FOUND, "No released report is available yet") from None
         except ValueError as exc:
             raise ApiError(HTTPStatus.BAD_REQUEST, str(exc)) from exc
-        data = text.encode("utf-8")
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(data)
+        self._send_bytes(text.encode("utf-8"), content_type, filename=filename)
 
     def get_review(self, query, name, key):
         try:

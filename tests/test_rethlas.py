@@ -488,6 +488,33 @@ def test_memory_meta_is_replaced_atomically_and_recovers_from_a_torn_file(tmp_pa
     assert outside.read_text() == "USER DATA"
 
 
+def test_memory_search_tokenizes_only_new_records_and_notices_rewrites(tmp_path):
+    from rethlas_osv.memory_server import WorkspaceMemory, load_upstream
+
+    upstream = load_upstream()
+    tokenized = []
+    tokenize = upstream._tokenize_bm25
+    upstream._tokenize_bm25 = lambda text: tokenized.append(text) or tokenize(text)
+    memory = WorkspaceMemory(upstream, tmp_path / "workspace")
+
+    def search(query):
+        tokenized.clear()
+        found = memory.memory_search("problem", query, ["proof_steps"])
+        return found["count"], len(tokenized) - 1  # minus the query itself
+
+    memory.memory_append("problem", "proof_steps", {"text": "cyclic group lemma"})
+    assert search("cyclic") == (1, 1)
+    assert search("cyclic") == (1, 0)
+    memory.memory_append("problem", "proof_steps", {"text": "another cyclic step"})
+    assert search("cyclic") == (2, 1)
+
+    # The generator may rewrite its memory files directly; old tokens must not survive.
+    channel = tmp_path / "workspace/memory/problem/proof_steps.jsonl"
+    channel.write_text('{"text": "abelian only"}\n{"text": "cyclic, no newline"}')
+    assert search("cyclic") == (1, 2)
+    assert search("abelian") == (1, 1)  # the unterminated record is never cached
+
+
 def test_theorem_search_exposes_only_query_and_result_count(tmp_path, monkeypatch):
     fastmcp = pytest.importorskip("fastmcp")
     requests = pytest.importorskip("requests")

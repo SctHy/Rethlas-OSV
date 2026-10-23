@@ -106,6 +106,28 @@ def test_demo_run_is_listed_as_completed_verify(tmp_path):
     assert detail["report_markdown"].startswith("# Verifier report")
     assert detail["inputs"]["question"] and detail["inputs"]["solution"]
     assert detail["job"] is None and detail["resumable"] is False
+    assert "inputs" not in run_tools.run_detail(runs_root / "demo", manager, inputs=False)
+
+
+def test_stderr_tail_reads_only_the_end_of_a_long_log(tmp_path):
+    log = tmp_path / "gui-stderr.log"
+    log.write_text("x" * 50_000 + "∀ε>0 ends here\n", encoding="utf-8")
+    tail = run_tools._tail(log, 20)
+    assert tail == "x" * 5 + "∀ε>0 ends here\n"
+    assert run_tools._tail(tmp_path / "missing.log", 20) is None
+
+
+def test_review_keys_and_paper_mode_are_validated(tmp_path):
+    for key in ("", ".hidden", "a/b", "a\\b", None):
+        with pytest.raises(ValueError):
+            run_tools.valid_review_key(key)
+    assert run_tools.valid_review_key("abc123") == "abc123"
+    job = {"argv": ["python", "-m", "osverifier_reports.paper_prepare", "--mode"]}
+    (tmp_path / "gui-job.json").write_text(json.dumps(job))
+    assert run_tools._paper_mode(tmp_path) is None
+    job["argv"] += ["smart"]
+    (tmp_path / "gui-job.json").write_text(json.dumps(job))
+    assert run_tools._paper_mode(tmp_path) == "smart"
 
 
 def test_trajectory_events_are_offset_paged(tmp_path):

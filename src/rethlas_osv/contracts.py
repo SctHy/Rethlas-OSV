@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Literal
 
 from osverifier.models import ReviewReport, StrictModel
+from osverifier.storage import read_json
 from osverifier.workflow_models import WorkflowReport
 from pydantic import Field
 
@@ -72,8 +73,6 @@ def stalled_partial_feedback(report: ReviewReport, directory):
         failure = last / "failure.json"
         if not failure.exists():
             return None
-        from osverifier.storage import read_json
-
         if read_json(failure).get("type") not in ("BackendStalled", "TimeoutExpired"):
             return None
         failed.append(job.name)

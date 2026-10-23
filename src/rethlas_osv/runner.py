@@ -175,6 +175,10 @@ class Experiment:
             generation_branches=self.config.generation_branches,
         )
 
+        # Persisted generation artifacts are immutable (hash-checked on replay), so each
+        # one is parsed once per invocation however often the summary is saved.
+        ready = {}
+
         def save():
             # Count persisted successful generation turns, including pending reviews.
             artifacts = [
@@ -182,10 +186,11 @@ class Experiment:
                 for branch in branches.values()
                 for path in branch["directory"].glob("rounds/*/generation.json")
             ]
+            for path in artifacts:
+                if path not in ready:
+                    ready[path] = read_json(path)["output"]["turn"]["candidate_ready"]
             state.generation_turns_completed = len(artifacts)
-            state.candidates_generated = sum(
-                read_json(path)["output"]["turn"]["candidate_ready"] for path in artifacts
-            )
+            state.candidates_generated = sum(ready[path] for path in artifacts)
             atomic_json(directory / "summary.json", state.model_dump(mode="json"))
             return state
 
@@ -215,134 +220,17 @@ class Experiment:
                     raise FrozenRunMismatch("implementation changed during experiment")
                 # All branches finish this generation wave before any branch deepens.
                 # Reviews are serial; each review retains its own internal concurrency.
+                phase = "verification"
                 for branch_id, branch in branches.items():
-                    output = generated[branch_id]
-                    branch["session_id"] = output["session_id"]
-                    mode = "full_solution" if output["turn"]["candidate_ready"] else "partial"
-                    candidate = output["candidate_solution"]
-                    turn_dir = branch["directory"] / "rounds" / f"{index + 1:04d}"
-                    key = digest({"question": question, "candidate_solution": candidate, "mode": mode})
-                    review_dir = directory / "reviews" / key
-                    request = ReviewRequest(
-                        request_id=f"candidate-{key}",
-                        question=question,
-                        candidate_solution=candidate,
-                        mode=mode,
+                    branch["session_id"] = generated[branch_id]["session_id"]
+                    outcome = self.review_branch(
+                        directory, question, state, branches, branch_id, index,
+                        generated[branch_id],
                     )
-                    self.emit(
-                        directory,
-                        "verification_started",
-                        round=index + 1,
-                        branch=branch_id,
-                        candidate_sha256=key,
-                        mode=mode,
-                    )
-                    phase = "verification"
-                    continuation = turn_dir / "stalled-continuation.json"
-                    if continuation.exists():
-                        receipt = read_json(continuation)
-                        if receipt["report_sha256"] != sha(turn_dir / "stalled-report.json") or receipt["feedback_sha256"] != sha(turn_dir / "feedback.json"):
-                            raise FrozenRunMismatch("stalled continuation artifacts changed")
-                        report = read_report(read_json(turn_dir / "stalled-report.json"))
-                    else:
-                        report = self.verify_candidate(request, review_dir)
-                    self.emit(
-                        directory,
-                        "verification_finished",
-                        round=index + 1,
-                        branch=branch_id,
-                        decision=report.decision,
-                        run_status=report.run_status,
-                    )
-                    if report.mode != mode or report.request_id != request.request_id:
-                        raise FrozenRunMismatch("verifier returned a different request or mode")
-                    state.last_decision = report.decision
-                    stalled_feedback = read_json(turn_dir / "feedback.json") if continuation.exists() else stalled_partial_feedback(report, review_dir)
-                    if report.run_status != "completed" and stalled_feedback is None:
-                        state.status = "incomplete"
-                        interruption = review_dir / "interruption.json"
-                        if (
-                            interruption.exists()
-                            and read_json(interruption).get("reason") == "quota_exhausted"
-                        ):
-                            atomic_json(
-                                directory / "interruption.json",
-                                {
-                                    **read_json(interruption),
-                                    "phase": phase,
-                                    "round": index + 1,
-                                    "branch": branch_id,
-                                    "review_artifact": str(interruption.relative_to(directory)),
-                                },
-                            )
-                            state.error = RESUME_MESSAGE
-                            self.emit(
-                                directory,
-                                "quota_exhausted",
-                                phase=phase,
-                                round=index + 1,
-                                branch=branch_id,
-                                resume="manual",
-                            )
-                        else:
-                            state.error = "Verification or its audit is unfinished. Resume this run before revising the proof."
+                    if outcome == "stop":
                         return save()
-                    if stalled_feedback is not None:
-                        self.emit(directory, "partial_review_stalled", round=index + 1, branch=branch_id, stalled_jobs=stalled_feedback["stalled_jobs"], decision=report.decision)
-                    branch["feedback"] = stalled_feedback or generator_feedback(report)
-                    if continuation.exists() and read_json(turn_dir / "feedback.json") != branch["feedback"]:
-                        raise FrozenRunMismatch("stalled continuation evidence changed")
-                    atomic_json(turn_dir / "feedback.json", branch["feedback"])
-                    if stalled_feedback is not None and not continuation.exists():
-                        atomic_json(turn_dir / "stalled-report.json", report.model_dump(mode="json"))
-                        atomic_json(continuation, {"report_sha256": sha(turn_dir / "stalled-report.json"), "feedback_sha256": sha(turn_dir / "feedback.json")})
-                    if mode == "full_solution" and report.decision == "READY_FOR_HUMAN":
-                        handoff_path = directory / "blueprint_ready_for_human.md"
-                        atomic_text(handoff_path, candidate)
-                        receipt = {
-                            "decision": report.decision,
-                            "human_confirmed": False,
-                            "manifest_sha256": sha(directory / "manifest.json"),
-                            "question_sha256": hashlib.sha256(question.encode()).hexdigest(),
-                            "proof_sha256": sha(handoff_path),
-                            "proof_artifact": handoff_path.name,
-                            "review_artifact": str(
-                                (review_dir / "report.json").relative_to(directory)
-                            ),
-                            "review_sha256": sha(review_dir / "report.json"),
-                            "generation_artifact": str(
-                                (turn_dir / "generation.json").relative_to(directory)
-                            ),
-                            "generation_sha256": sha(turn_dir / "generation.json"),
-                            "rounds_completed": index + 1,
-                            "generation_branches": len(branches),
-                            "generation_turns_completed": state.generation_turns_completed,
-                            "candidates_generated": state.candidates_generated,
-                            "winning_branch": branch_id,
-                        }
-                        atomic_json(directory / "handoff.json", receipt)
-                        self.emit(
-                            directory,
-                            "ready_for_human",
-                            round=index + 1,
-                            branch=branch_id,
-                            proof_sha256=receipt["proof_sha256"],
-                        )
-                        for skipped in range(branch_id + 1, len(branches) + 1):
-                            self.emit(
-                                directory,
-                                "verification_skipped",
-                                round=index + 1,
-                                branch=skipped,
-                                reason="human_handoff_available",
-                            )
+                    if outcome == "handoff":
                         return self.check_handoff(directory)
-                    # A replayed review must not overwrite a later interrupted draft.
-                    next_turn = branch["directory"] / "rounds" / f"{index + 2:04d}"
-                    if not next_turn.exists():
-                        workspace_files.write_text(
-                            branch["directory"] / "generator", "results/blueprint.md", candidate
-                        )
                 state.rounds_completed = index + 1
                 save()
             state.status = "budget_exhausted"
@@ -361,6 +249,140 @@ class Experiment:
             state.status, state.error = "incomplete", f"{type(exc).__name__}: {error_text(exc)}"
             self.emit(directory, "execution_error", error=state.error)
             return save()
+
+    def review_branch(self, directory, question, state, branches, branch_id, index, output):
+        """Review one branch's turn and release its feedback. Returns "stop" when the run
+        must end unfinished, "handoff" once a READY_FOR_HUMAN receipt is written, else None."""
+        branch = branches[branch_id]
+        mode = "full_solution" if output["turn"]["candidate_ready"] else "partial"
+        candidate = output["candidate_solution"]
+        turn_dir = branch["directory"] / "rounds" / f"{index + 1:04d}"
+        key = digest({"question": question, "candidate_solution": candidate, "mode": mode})
+        review_dir = directory / "reviews" / key
+        request = ReviewRequest(
+            request_id=f"candidate-{key}",
+            question=question,
+            candidate_solution=candidate,
+            mode=mode,
+        )
+        self.emit(
+            directory,
+            "verification_started",
+            round=index + 1,
+            branch=branch_id,
+            candidate_sha256=key,
+            mode=mode,
+        )
+        continuation = turn_dir / "stalled-continuation.json"
+        if continuation.exists():
+            receipt = read_json(continuation)
+            if receipt["report_sha256"] != sha(turn_dir / "stalled-report.json") or receipt["feedback_sha256"] != sha(turn_dir / "feedback.json"):
+                raise FrozenRunMismatch("stalled continuation artifacts changed")
+            report = read_report(read_json(turn_dir / "stalled-report.json"))
+        else:
+            report = self.verify_candidate(request, review_dir)
+        self.emit(
+            directory,
+            "verification_finished",
+            round=index + 1,
+            branch=branch_id,
+            decision=report.decision,
+            run_status=report.run_status,
+        )
+        if report.mode != mode or report.request_id != request.request_id:
+            raise FrozenRunMismatch("verifier returned a different request or mode")
+        state.last_decision = report.decision
+        stalled_feedback = read_json(turn_dir / "feedback.json") if continuation.exists() else stalled_partial_feedback(report, review_dir)
+        if report.run_status != "completed" and stalled_feedback is None:
+            self.record_unfinished_review(directory, state, review_dir, branch_id, index)
+            return "stop"
+        if stalled_feedback is not None:
+            self.emit(directory, "partial_review_stalled", round=index + 1, branch=branch_id, stalled_jobs=stalled_feedback["stalled_jobs"], decision=report.decision)
+        branch["feedback"] = stalled_feedback or generator_feedback(report)
+        if continuation.exists() and read_json(turn_dir / "feedback.json") != branch["feedback"]:
+            raise FrozenRunMismatch("stalled continuation evidence changed")
+        atomic_json(turn_dir / "feedback.json", branch["feedback"])
+        if stalled_feedback is not None and not continuation.exists():
+            atomic_json(turn_dir / "stalled-report.json", report.model_dump(mode="json"))
+            atomic_json(continuation, {"report_sha256": sha(turn_dir / "stalled-report.json"), "feedback_sha256": sha(turn_dir / "feedback.json")})
+        if mode == "full_solution" and report.decision == "READY_FOR_HUMAN":
+            self.write_handoff(
+                directory, question, state, branches, branch_id, index, candidate,
+                review_dir, turn_dir,
+            )
+            return "handoff"
+        # A replayed review must not overwrite a later interrupted draft.
+        next_turn = branch["directory"] / "rounds" / f"{index + 2:04d}"
+        if not next_turn.exists():
+            workspace_files.write_text(
+                branch["directory"] / "generator", "results/blueprint.md", candidate
+            )
+        return None
+
+    def record_unfinished_review(self, directory, state, review_dir, branch_id, index):
+        state.status = "incomplete"
+        interruption = review_dir / "interruption.json"
+        if interruption.exists() and read_json(interruption).get("reason") == "quota_exhausted":
+            atomic_json(
+                directory / "interruption.json",
+                {
+                    **read_json(interruption),
+                    "phase": "verification",
+                    "round": index + 1,
+                    "branch": branch_id,
+                    "review_artifact": str(interruption.relative_to(directory)),
+                },
+            )
+            state.error = RESUME_MESSAGE
+            self.emit(
+                directory,
+                "quota_exhausted",
+                phase="verification",
+                round=index + 1,
+                branch=branch_id,
+                resume="manual",
+            )
+        else:
+            state.error = "Verification or its audit is unfinished. Resume this run before revising the proof."
+
+    def write_handoff(
+        self, directory, question, state, branches, branch_id, index, candidate, review_dir, turn_dir
+    ):
+        handoff_path = directory / "blueprint_ready_for_human.md"
+        atomic_text(handoff_path, candidate)
+        receipt = {
+            "decision": "READY_FOR_HUMAN",
+            "human_confirmed": False,
+            "manifest_sha256": sha(directory / "manifest.json"),
+            "question_sha256": hashlib.sha256(question.encode()).hexdigest(),
+            "proof_sha256": sha(handoff_path),
+            "proof_artifact": handoff_path.name,
+            "review_artifact": str((review_dir / "report.json").relative_to(directory)),
+            "review_sha256": sha(review_dir / "report.json"),
+            "generation_artifact": str((turn_dir / "generation.json").relative_to(directory)),
+            "generation_sha256": sha(turn_dir / "generation.json"),
+            "rounds_completed": index + 1,
+            "generation_branches": len(branches),
+            "generation_turns_completed": state.generation_turns_completed,
+            "candidates_generated": state.candidates_generated,
+            "winning_branch": branch_id,
+        }
+        atomic_json(directory / "handoff.json", receipt)
+        self.emit(
+            directory,
+            "ready_for_human",
+            round=index + 1,
+            branch=branch_id,
+            proof_sha256=receipt["proof_sha256"],
+        )
+        for skipped in range(branch_id + 1, len(branches) + 1):
+            self.emit(
+                directory,
+                "verification_skipped",
+                round=index + 1,
+                branch=skipped,
+                reason="human_handoff_available",
+            )
 
     def branch_directory(self, directory, branch):
         # Keep the original layout for width one.

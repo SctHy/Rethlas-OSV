@@ -45,14 +45,25 @@ def _json(path: Path):
         return None
 
 
-def _text(path: Path, limit: int | None = None) -> str | None:
+def _text(path: Path) -> str | None:
     try:
-        text = path.read_text(encoding="utf-8", errors="replace")
+        return path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
-    if limit is not None and len(text) > limit:
-        return text[-limit:]
-    return text
+
+
+def _tail(path: Path, limit: int) -> str | None:
+    """The last ``limit`` characters of a log that grows across invocations, read from
+    its end rather than in full."""
+    try:
+        with path.open("rb") as stream:
+            size = stream.seek(0, 2)
+            # A UTF-8 character is at most four bytes; the cut start is decoded leniently.
+            stream.seek(max(0, size - 4 * limit))
+            text = stream.read().decode("utf-8", errors="replace")
+    except OSError:
+        return None
+    return text[-limit:]
 
 
 def detect_kind(run_dir: Path) -> str | None:
@@ -238,16 +249,16 @@ def _inputs(run_dir: Path, kind: str) -> dict:
     return {"question": question or request.get("question"), "solution": solution or request.get("candidate_solution")}
 
 
-def run_detail(run_dir: Path, manager: JobManager) -> dict | None:
+def run_detail(run_dir: Path, manager: JobManager, *, inputs: bool = True) -> dict | None:
+    """Everything the run page shows. Inputs never change after a run starts, so a page
+    that already has them may poll with ``inputs=False``."""
     summary = run_summary(run_dir, manager)
     if summary is None:
         return None
     kind = summary["kind"]
-    detail = {
-        **summary,
-        "inputs": _inputs(run_dir, kind),
-        "stderr_tail": _text(run_dir / STDERR_LOG, 6000),
-    }
+    detail = {**summary, "stderr_tail": _tail(run_dir / STDERR_LOG, 6000)}
+    if inputs:
+        detail["inputs"] = _inputs(run_dir, kind)
     if kind == "prove":
         reviews = _reviews(run_dir)
         detail["reviews"] = reviews
@@ -269,14 +280,20 @@ def run_detail(run_dir: Path, manager: JobManager) -> dict | None:
 def _paper_mode(run_dir: Path) -> str | None:
     job = read_job(run_dir)
     argv = (job or {}).get("argv") or []
-    if any(m in argv for m in ("osverifier_reports.paper_prepare", "osverifier_gui.paper")) and "--mode" in argv:
+    if any(m in argv for m in ("osverifier_reports.paper_prepare", "osverifier_gui.paper")) and "--mode" in argv[:-1]:
         return argv[argv.index("--mode") + 1]
     return None
 
 
-def review_detail(run_dir: Path, key: str) -> dict | None:
-    if "/" in key or key.startswith("."):
+def valid_review_key(key) -> str:
+    """A review directory name: one path component, never hidden."""
+    if not isinstance(key, str) or not key or "/" in key or "\\" in key or key.startswith("."):
         raise ValueError("invalid review key")
+    return key
+
+
+def review_detail(run_dir: Path, key: str) -> dict | None:
+    valid_review_key(key)
     review_dir = run_dir / "reviews" / key
     if not review_dir.is_dir():
         return None

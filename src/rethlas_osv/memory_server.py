@@ -15,18 +15,30 @@ before it answered Codex's initialize request.
 
 import argparse
 import errno
+import hashlib
 import importlib.util
 import json
 import os
 import secrets
 import stat
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 TOOLS = ("memory_init", "memory_append", "memory_search", "branch_update")
 _CLOEXEC = getattr(os, "O_CLOEXEC", 0)
 _NOFOLLOW = os.O_NOFOLLOW | os.O_NONBLOCK | _CLOEXEC
+
+
+@dataclass
+class ChannelIndex:
+    """Records of one channel file and their BM25 tokens, up to ``offset`` bytes."""
+
+    offset: int = 0
+    digest: bytes = hashlib.sha256(b"").digest()
+    items: List[Dict[str, Any]] = field(default_factory=list)
+    tokens: List[List[str]] = field(default_factory=list)
 
 
 def load_upstream():
@@ -42,6 +54,7 @@ class WorkspaceMemory:
         self.upstream = upstream
         self.workspace = workspace.resolve()
         self.root = self.workspace / "memory"
+        self._indexes: Dict[tuple, ChannelIndex] = {}
 
     @contextmanager
     def directory(self, sanitized: str, *, create: bool):
@@ -121,24 +134,45 @@ class WorkspaceMemory:
         with os.fdopen(fd, "a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
-    def records(self, directory: int | None, name: str):
-        if directory is None:
+    def _add(self, index: ChannelIndex, line: bytes) -> None:
+        try:
+            payload = json.loads(line.decode("utf-8")) if line.strip() else None
+        except (UnicodeDecodeError, json.JSONDecodeError):
             return
+        if isinstance(payload, dict):
+            index.items.append(payload)
+            document = json.dumps(payload, ensure_ascii=False)
+            index.tokens.append(self.upstream._tokenize_bm25(document))
+
+    def indexed_records(self, directory: int | None, sanitized: str, name: str):
+        """A channel's records and tokens. Complete lines already parsed are reused while
+        the file still starts with exactly those bytes; the generator can rewrite memory
+        files in its sandbox, and then the channel is parsed again."""
+        if directory is None:
+            return [], []
         try:
             fd = self.open(directory, name, os.O_RDONLY)
         except FileNotFoundError:
-            return
-        with os.fdopen(fd, encoding="utf-8") as handle:
-            for line in handle:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    payload = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(payload, dict):
-                    yield payload
+            return [], []
+        with os.fdopen(fd, "rb") as handle:
+            data = handle.read()
+        key = (sanitized, name)
+        index = self._indexes.get(key)
+        if (
+            index is None
+            or len(data) < index.offset
+            or hashlib.sha256(data[: index.offset]).digest() != index.digest
+        ):
+            index = ChannelIndex()
+        end = data.rfind(b"\n") + 1
+        if end > index.offset:
+            for line in data[index.offset : end].splitlines():
+                self._add(index, line)
+            index.offset, index.digest = end, hashlib.sha256(data[:end]).digest()
+        self._indexes[key] = index
+        tail = ChannelIndex()
+        self._add(tail, data[end:])  # a final record without its newline, never cached
+        return index.items + tail.items, index.tokens + tail.tokens
 
     def memory_init(self, problem_id: str, meta: Optional[Dict[str, Any]] = None):
         upstream = self.upstream
@@ -219,11 +253,10 @@ class WorkspaceMemory:
         total_results = 0
         with self.directory(sanitized, create=False) as directory:
             for channel in search_channels:
-                items = list(self.records(directory, self.channel_file(channel)))
-                documents = [json.dumps(item, ensure_ascii=False) for item in items]
-                scores = upstream._bm25_score_documents(
-                    query, [upstream._tokenize_bm25(document) for document in documents]
+                items, tokens = self.indexed_records(
+                    directory, sanitized, self.channel_file(channel)
                 )
+                scores = upstream._bm25_score_documents(query, tokens)
                 ranked_results: List[Dict[str, Any]] = []
                 for item, score in sorted(
                     zip(items, scores),
