@@ -344,6 +344,8 @@ def with_max_rounds(argv: list[str], max_rounds: int) -> list[str]:
     if max_rounds < 1:
         raise ValueError("max_rounds must be positive")
     updated = list(argv)
+    if "--max-rounds" not in updated[:-1]:
+        raise ValueError("the stored command has no round budget")
     index = updated.index("--max-rounds")
     updated[index + 1] = str(max_rounds)
     return updated

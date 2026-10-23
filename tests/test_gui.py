@@ -306,8 +306,30 @@ def test_prove_job_records_problem_and_rounds_override(served, tmp_path):
     status, body = client.call("POST", "/api/runs/conj/resume", {"max_rounds": 3})
     assert status == 200, body
     assert rethlas_cli.parser().parse_args(read_job(run_dir)["argv"][3:]).max_rounds == 3
+    # The page pre-fills the next resume from the recorded settings, not the first budget.
+    assert read_job(run_dir)["settings"]["prove"]["max_rounds"] == 3
     client.call("POST", "/api/runs/conj/cancel")
     wait_for(lambda: read_job(run_dir)["status"] == "exited")
+
+
+def test_malformed_requests_are_client_errors(served):
+    app, client = served
+    import http.client
+
+    for length in ("-1", "abc", str(64 * 1024 * 1024 + 1)):
+        connection = http.client.HTTPConnection("127.0.0.1", int(client.base.rsplit(":", 1)[1]), timeout=5)
+        connection.putrequest("PUT", "/api/settings")
+        connection.putheader("Content-Type", "application/json")
+        connection.putheader("Content-Length", length)
+        connection.endheaders()
+        assert connection.getresponse().status == 400
+        connection.close()
+    status, body = client.call(
+        "POST", "/api/runs", {"kind": "prove", "name": "x", "problem": "p", "settings": {"prove": [1]}}
+    )
+    assert status == 400 and "settings.prove" in body["error"]
+    with pytest.raises(ValueError):
+        with_max_rounds(["python", "-m", "rethlas_osv.cli"], 3)
 
 
 def test_jobs_run_children_in_utf8_mode(tmp_path):

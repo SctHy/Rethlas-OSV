@@ -43,6 +43,8 @@ DEFAULT_HOME = Path("~/.osverifier").expanduser()
 # Names a browser may use for this server. Anything else in the Host header means the
 # request was routed here under a foreign name (DNS rebinding) and is refused.
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "[::1]")
+# Papers are pasted as text; a request far beyond any paper is refused unread.
+MAX_BODY_BYTES = 64 * 1024 * 1024
 
 
 def is_loopback_host(host: str) -> bool:
@@ -252,6 +254,8 @@ class App:
         overrides = body.get("settings") or {}
         if not isinstance(overrides, dict):
             raise ApiError(HTTPStatus.BAD_REQUEST, "settings must be an object")
+        if not isinstance(overrides.get(kind) or {}, dict):
+            raise ApiError(HTTPStatus.BAD_REQUEST, f"settings.{kind} must be an object")
         merged = {
             **base,
             **{k: overrides[k] for k in ("codex_bin", "codex_home") if k in overrides},
@@ -329,15 +333,21 @@ class App:
             )
         except ReplayError as exc:
             raise ApiError(HTTPStatus.BAD_REQUEST, f"cannot resume this run: {exc}") from exc
+        recorded = job.get("settings") if isinstance(job.get("settings"), dict) else {}
         if job["kind"] == "prove" and body.get("max_rounds") not in (None, ""):
             try:
-                argv = with_max_rounds(argv, int(body["max_rounds"]))
+                rounds = int(body["max_rounds"])
+                argv = with_max_rounds(argv, rounds)
             except (TypeError, ValueError) as exc:
                 raise ApiError(
                     HTTPStatus.BAD_REQUEST, "max_rounds must be a positive integer"
                 ) from exc
+            # The record must describe the command actually launched; the page offers
+            # its round budget as the default for the next resume.
+            if isinstance(recorded.get("prove"), dict):
+                recorded = {**recorded, "prove": {**recorded["prove"], "max_rounds": rounds}}
         try:
-            self.jobs.start(directory, job["kind"], argv, job.get("settings", {}), resume=True)
+            self.jobs.start(directory, job["kind"], argv, recorded, resume=True)
         except (OSError, RuntimeError) as exc:
             raise ApiError(HTTPStatus.CONFLICT, str(exc)) from exc
         return run_tools.run_summary(directory, self.jobs)
@@ -406,7 +416,12 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(HTTPStatus.BAD_REQUEST, str(exc)) from exc
 
     def _read_body(self) -> dict:
-        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= MAX_BODY_BYTES:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid or oversized request body")
         if length == 0:
             return {}
         if not (self.headers.get("Content-Type") or "").startswith("application/json"):

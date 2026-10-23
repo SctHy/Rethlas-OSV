@@ -116,7 +116,8 @@ def main(argv=None) -> int:
     except KeyboardInterrupt:
         return 0
     finally:
-        server.shutdown() if not app.quit_requested.is_set() else None
+        if not app.quit_requested.is_set():
+            server.shutdown()
         server.server_close()
         for path in app.jobs.shutdown_note():
             print(f"still running on its own: {path}", flush=True)
