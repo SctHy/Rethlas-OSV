@@ -538,6 +538,14 @@ class ClaudeBackend:
             "run other agents, edit the solution, or send messages externally. Read-only "
             "calculations are allowed."
         )
+        if role == "decomposer":
+            # The core accepts only an exact tiling; Claude models otherwise tend to leave
+            # blank separator lines between segments, and the attempt is rejected.
+            prompt += (
+                " The segments must tile the scope's source span exactly, blank lines "
+                "included: the first starts at the span's start_line, each next segment "
+                "starts at the previous end_line + 1, and the last ends at the span's end_line."
+            )
         atomic_text(attempt_dir / "prompt.txt", prompt + "\n")
         tools = self.tools()
         argv = _isolated(
