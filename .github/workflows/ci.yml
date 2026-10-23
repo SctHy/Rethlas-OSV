@@ -19,3 +19,5 @@ jobs:
       - run: uv sync --locked
       - run: uv run --locked ruff check .
       - run: uv run --locked pytest -q
+      # The GUI page in Chrome (preinstalled on GitHub's macOS runners).
+      - run: uv run --locked --with playwright pytest -q tests/test_gui_browser.py

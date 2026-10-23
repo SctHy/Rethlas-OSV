@@ -42,6 +42,13 @@ from .settings import (
 )
 
 STATIC = Path(__file__).parent / "static"
+# The only files served from STATIC; a request path never becomes a file path.
+STATIC_FILES = {
+    "/": ("index.html", "text/html; charset=utf-8"),
+    "/index.html": ("index.html", "text/html; charset=utf-8"),
+    "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+    "/app.css": ("app.css", "text/css; charset=utf-8"),
+}
 DEFAULT_HOME = Path("~/.osverifier").expanduser()
 # Names a browser may use for this server. Anything else in the Host header means the
 # request was routed here under a foreign name (DNS rebinding) and is refused.
@@ -497,8 +504,8 @@ class Handler(BaseHTTPRequestHandler):
         parts = urlsplit(self.path)
         try:
             self._check_host()
-            if method == "GET" and parts.path in ("/", "/index.html"):
-                return self._send_static("index.html", "text/html; charset=utf-8")
+            if method == "GET" and parts.path in STATIC_FILES:
+                return self._send_static(*STATIC_FILES[parts.path])
             for route_method, pattern, name in ROUTES:
                 match = pattern.match(parts.path)
                 if match and route_method == method:

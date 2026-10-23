@@ -16,7 +16,8 @@ from pathlib import Path
 
 import pytest
 
-PAGE = Path(__file__).resolve().parents[1] / "src/rethlas_osv_gui/static/index.html"
+STATIC = Path(__file__).resolve().parents[1] / "src/rethlas_osv_gui/static"
+PAGE = STATIC / "index.html"
 
 
 def page() -> str:
@@ -24,7 +25,33 @@ def page() -> str:
 
 
 def inline_script() -> str:
-    return re.findall(r"<script>(.*?)</script>", page(), re.S)[-1]
+    """The page's own code, which lives in app.js rather than inline."""
+    return (STATIC / "app.js").read_text(encoding="utf-8")
+
+
+def test_no_inline_script_or_handlers_and_csp_forbids_them():
+    html = page()
+    policy = re.search(r'Content-Security-Policy" content="([^"]+)"', html).group(1)
+    script_src = next(d for d in policy.split(";") if d.strip().startswith("script-src")).split()
+    assert "'unsafe-inline'" not in script_src and "'unsafe-eval'" not in script_src
+    assert re.findall(r"<script\b[^>]*>(?!</script>)", html) == [], "inline <script> content"
+    for source in (html, inline_script()):
+        assert not re.search(r"\son[a-z]+\s*=", source), "inline event handler attribute"
+    assert '<script src="/app.js"></script>' in html
+
+
+def test_only_the_page_files_are_served(served):
+    app, client = served
+    import urllib.error
+    import urllib.request
+
+    for path, kind in (("/", "text/html"), ("/app.js", "text/javascript"), ("/app.css", "text/css")):
+        with urllib.request.urlopen(client.base + path) as response:
+            assert response.headers["Content-Type"].startswith(kind)
+    for path in ("/server.py", "/static/app.js", "/../server.py", "/app.js.map"):
+        with pytest.raises(urllib.error.HTTPError) as refused:
+            urllib.request.urlopen(client.base + path)
+        assert refused.value.code == 404
 
 
 def test_csp_restricts_requests_and_precedes_every_resource():
