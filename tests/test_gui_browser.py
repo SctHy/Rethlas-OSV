@@ -183,7 +183,13 @@ def test_finished_runs_show_reports_reviews_and_copy_sources(browser_page):
     page.click("#rd-proof-copy")
     until(page, "document.getElementById('rd-proof-copy')?.textContent === 'Copied'")
     assert page.evaluate("navigator.clipboard.readText()") == "# Proof\n\nIndeed $1 = 1$."
+    # One section shows at a time: a handoff opens on its proof.
+    assert page.is_hidden("#rd-reviews") and page.is_hidden("#rd-events")
+    page.click(".seg button[data-section=activity]")
     page.wait_for_selector("#rd-events div:has-text('ready_for_human')")
+    assert page.is_hidden("#rd-proof-panel")
+    assert page.text_content("#rd-reviews-count") == "1"
+    page.click(".seg button[data-section=reviews]")
     page.click("#rd-reviews tr[data-open-review]")
     page.wait_for_selector("#rv-md")
     assert "No issue." in page.text_content("#rv-md")
@@ -191,6 +197,15 @@ def test_finished_runs_show_reports_reviews_and_copy_sources(browser_page):
     until(page, "[...document.querySelectorAll('#rd-review-view button')].some(b => b.textContent === 'Copied')")
     assert page.evaluate("navigator.clipboard.readText()") == "# Proof\n\nIndeed $1 = 1$."
     assert page.is_visible("#rd-review-view button:has-text('Draft template report')")
+    # The sidebar lists recent runs and opens one from any page.
+    page.click("nav button[data-tab=settings]")
+    page.click("#recent-runs [data-open-run='demo']")
+    until(page, "document.getElementById('rd-status')?.textContent === 'Completed'")
+    assert page.is_visible("#tab-runs") and page.evaluate("location.hash") == "#run/demo"
+    assert "active" in page.get_attribute("#recent-runs [data-open-run='demo']", "class")
+    # A verify run without a prepared question has no Question tab and opens on feedback.
+    assert page.is_hidden(".seg button[data-section=question]") and page.is_visible("#rd-report")
+    page.click("#recent-runs [data-open-run='proved']")
     # A direct link to a run opens it after a reload.
     page.reload()
     until(page, "document.getElementById('rd-status')?.textContent === 'Ready for human'")

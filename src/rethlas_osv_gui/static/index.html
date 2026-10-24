@@ -18,131 +18,180 @@
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
-<header>
-  <h1><span class="mark sm" aria-hidden="true">ROS</span>Rethlas-OSV</h1>
-  <nav>
-    <button data-tab="about" class="active">About</button>
-    <button data-tab="verify">Verify a paper</button>
-    <button data-tab="prove">Prove a conjecture</button>
-    <button data-tab="runs">Runs</button>
-    <button data-tab="settings">Settings</button>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><span class="mark sm" aria-hidden="true">ROS</span><span>Rethlas-OSV</span></div>
+  <nav aria-label="Sections">
+    <button data-tab="prove" title="Prove a conjecture" aria-label="Prove a conjecture"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.8 4.9 4.9 1.8-4.9 1.8L12 16.9l-1.8-4.9-4.9-1.8 4.9-1.8z"/><path d="M18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg><span>Prove a conjecture</span></button>
+    <button data-tab="verify" title="Verify a paper" aria-label="Verify a paper"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h7l4.5 4.5v12.5H7z"/><path d="M14 3.5V8h4.5"/><path d="M9.8 14.2l1.9 1.9 3.6-3.8"/></svg><span>Verify a paper</span></button>
+    <button data-tab="runs" title="Runs" aria-label="Runs"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 6.5h15M4.5 12h15M4.5 17.5h9"/></svg><span>Runs</span></button>
+    <button data-tab="settings" title="Settings" aria-label="Settings"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg><span>Settings</span></button>
+    <button data-tab="about" title="About" aria-label="About" class="active"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.2M12 7.8v.1"/></svg><span>About</span></button>
   </nav>
-  <span style="flex:1"></span>
-  <span id="codex-pill" class="badge">Codex: checking…</span>
-  <select id="theme-select" title="Color theme" data-change="theme" style="width:auto; padding:6px 8px"><option value="system">Theme: system</option><option value="light">Theme: light</option><option value="dark">Theme: dark</option></select>
-  <button class="secondary hidden" id="quit-btn" data-action="quit">Quit</button>
-</header>
+  <div class="recent-block">
+    <div class="side-heading">Recent runs</div>
+    <div id="recent-runs" class="recent"></div>
+  </div>
+  <div class="side-foot">
+    <div class="pills"><span id="codex-pill" class="badge">Codex: checking…</span><span id="claude-pill" class="badge">Claude Code: checking…</span></div>
+    <div class="side-controls">
+      <select id="theme-select" title="Color theme" data-change="theme"><option value="system">Theme: system</option><option value="light">Theme: light</option><option value="dark">Theme: dark</option></select>
+      <button class="secondary hidden" id="quit-btn" data-action="quit">Quit</button>
+    </div>
+  </div>
+</aside>
 <main>
 
-<section id="tab-verify" class="tab hidden">
-  <div class="panel">
-    <h2>Verify a paper</h2>
-    <p class="muted">Upload or paste one paper (LaTeX or Markdown), and get a report on imprecisions in the paper.</p>
-    <div class="field"><label>Run name</label><input type="text" id="v-name" placeholder="e.g. satake-paper-v3"></div>
-    <div class="field" id="v-paper-field">
-      <div class="row"><label style="margin:0">Paper</label><span style="flex:1"></span><input type="file" id="v-pfile" accept=".tex,.md,.txt" class="hidden"><button class="secondary" data-action="pick-file" data-input="v-pfile" data-target="v-paper">Load file…</button></div>
-      <textarea id="v-paper" class="tall" placeholder="The complete paper (LaTeX or Markdown)."></textarea>
-    </div>
-    <div class="field" id="v-mode-field">
-      <label>Mode</label>
-      <div class="row"><label class="check"><input type="radio" name="v-mode" value="smart" checked> <b>Smart</b>&nbsp;— focusing on main theorems and key steps selected by agents</label></div>
-      <div class="row"><label class="check"><input type="radio" name="v-mode" value="lazy"> <b>Lazy</b>&nbsp;— focusing on theorems in the introduction</label></div>
-      <div class="row"><label class="check"><input type="radio" name="v-mode" value="manual"> <b>Manual</b>&nbsp;— type theorem LaTeX labels to focus on</label></div>
-      <div id="v-tags-field" class="hidden" style="margin-top:6px"><input type="text" id="v-tags" placeholder="labels, comma separated: thm:main, prop:key"><div class="muted">Each label must sit inside a theorem-like environment, e.g. <code>\begin{theorem}\label{thm:main} … \end{theorem}</code>. No model call is needed for this mode.</div></div>
-    </div>
-    <details id="v-own"><summary>Provide the question yourself instead (advanced)</summary>
-      <div class="field" style="margin-top:8px">
-        <div class="row"><label style="margin:0">Question / theorem statement</label><span style="flex:1"></span><input type="file" id="v-qfile" accept=".tex,.md,.txt" class="hidden"><button class="secondary" data-action="pick-file" data-input="v-qfile" data-target="v-question">Load file…</button></div>
-        <textarea id="v-question" placeholder="What is claimed? State the question the solution must answer."></textarea>
-      </div>
+<section id="tab-prove" class="tab hidden">
+  <header class="page-head">
+    <h1>Prove a conjecture</h1>
+    <p class="lead">State a conjecture precisely; or upload the LaTeX of your paper and begin with <code>Prove Lemma \ref{tag} in the following paper</code>.</p>
+  </header>
+  <div class="split">
+    <div class="panel compose">
+      <div class="field"><label for="p-name">Run name</label><input type="text" id="p-name" placeholder="e.g. coset-finiteness"></div>
       <div class="field">
-        <div class="row"><label style="margin:0">Candidate solution / proof</label><span style="flex:1"></span><input type="file" id="v-sfile" accept=".tex,.md,.txt" class="hidden"><button class="secondary" data-action="pick-file" data-input="v-sfile" data-target="v-solution">Load file…</button></div>
-        <textarea id="v-solution" placeholder="The full argument to be reviewed (LaTeX or Markdown)."></textarea>
+        <div class="label-row"><label for="p-problem">Problem statement</label><input type="file" id="p-file" accept=".tex,.md,.txt" class="hidden"><button class="secondary small" data-action="pick-file" data-input="p-file" data-target="p-problem">Load file…</button></div>
+        <textarea id="p-problem" class="tall" placeholder="State the conjecture precisely, with definitions and hypotheses (LaTeX or Markdown)."></textarea>
       </div>
-      <p class="muted">When this section is open and both boxes are filled, they are used instead of the paper above.</p>
-    </details>
-    <h3>Quick settings (defaults come from the Settings tab)</h3>
-    <div class="grid">
-      <div><label class="check"><input type="checkbox" id="v-decompose"> Decomposed review (parallel review segments)</label><label class="check"><input type="checkbox" id="v-early"> Early stop on the first major mistake</label></div>
-      <div><label>Model</label><input type="text" id="v-model" list="models"></div>
-      <div><label>Reasoning effort</label><select id="v-effort"><option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option></select></div>
-      <div><label>Web search</label><select id="v-web"><option>live</option><option>cached</option><option>disabled</option></select></div>
-      <div><label>Concurrent verifier calls</label><input type="number" id="v-workers" min="1"></div>
     </div>
-    <div class="error" id="v-error"></div>
-    <div class="row"><button class="primary" id="v-start" data-action="start-verify">Start review</button><span class="muted">Reviews of long papers take hours and run in the background; you can close this page.</span></div>
+    <aside class="panel options">
+      <div class="options-head"><h2>Run options</h2><span class="muted">Defaults come from Settings.</span></div>
+      <div class="group">
+        <div class="group-title">Generator</div>
+        <div><label for="p-gbackend">Backend</label><select id="p-gbackend" data-change="follow-backend" data-model="p-gmodel"><option value="codex">Codex</option><option value="claude">Claude Code</option></select></div>
+        <div><label for="p-gmodel">Model</label><input type="text" id="p-gmodel" list="models"></div>
+        <div><label for="p-geffort">Reasoning effort</label><select id="p-geffort"><option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option></select></div>
+      </div>
+      <div class="group">
+        <div class="group-title">Verifier</div>
+        <div><label for="p-vbackend">Backend</label><select id="p-vbackend" data-change="follow-backend" data-model="p-vmodel"><option value="codex">Codex</option><option value="claude">Claude Code</option></select></div>
+        <div><label for="p-vmodel">Model</label><input type="text" id="p-vmodel" list="models"></div>
+        <div><label for="p-veffort">Reasoning effort</label><select id="p-veffort"><option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option></select></div>
+      </div>
+      <div class="group">
+        <div class="group-title">Budget</div>
+        <div class="pair">
+          <div><label for="p-rounds">Rounds per branch</label><input type="number" id="p-rounds" min="1"></div>
+          <div><label for="p-branches">Parallel branches</label><input type="number" id="p-branches" min="1"></div>
+        </div>
+      </div>
+      <div class="error" id="p-error"></div>
+      <button class="primary block" id="p-start" data-action="start-prove">Start proving</button>
+      <span class="muted" id="p-note"></span>
+    </aside>
   </div>
 </section>
 
-<section id="tab-prove" class="tab hidden">
-  <div class="panel">
-    <h2>Prove a conjecture</h2>
-    <p class="muted">State a conjecture to prove; or upload the LaTeX of your paper and add <code>Prove Lemma \ref{tag} in the following paper</code> at the beginning.</p>
-    <div class="field"><label>Run name</label><input type="text" id="p-name" placeholder="e.g. coset-finiteness"></div>
-    <div class="field">
-      <div class="row"><label style="margin:0">Problem statement</label><span style="flex:1"></span><input type="file" id="p-file" accept=".tex,.md,.txt" class="hidden"><button class="secondary" data-action="pick-file" data-input="p-file" data-target="p-problem">Load file…</button></div>
-      <textarea id="p-problem" class="tall" placeholder="State the conjecture precisely, with definitions and hypotheses (LaTeX or Markdown)."></textarea>
+<section id="tab-verify" class="tab hidden">
+  <header class="page-head">
+    <h1>Verify a paper</h1>
+    <p class="lead">Upload or paste one paper (LaTeX or Markdown), and get a report on imprecisions in the paper.</p>
+  </header>
+  <div class="split">
+    <div class="panel compose">
+      <div class="field"><label for="v-name">Run name</label><input type="text" id="v-name" placeholder="e.g. satake-paper-v3"></div>
+      <div class="field" id="v-paper-field">
+        <div class="label-row"><label for="v-paper">Paper</label><input type="file" id="v-pfile" accept=".tex,.md,.txt" class="hidden"><button class="secondary small" data-action="pick-file" data-input="v-pfile" data-target="v-paper">Load file…</button></div>
+        <textarea id="v-paper" class="tall" placeholder="The complete paper (LaTeX or Markdown)."></textarea>
+      </div>
+      <div class="field" id="v-mode-field">
+        <label>Focus</label>
+        <div class="choices">
+          <label class="choice"><input type="radio" name="v-mode" value="smart" checked><span><b>Smart</b><small>Main theorems and key steps, selected by agents</small></span></label>
+          <label class="choice"><input type="radio" name="v-mode" value="lazy"><span><b>Lazy</b><small>Theorems in the introduction</small></span></label>
+          <label class="choice"><input type="radio" name="v-mode" value="manual"><span><b>Manual</b><small>Theorem LaTeX labels you type</small></span></label>
+        </div>
+        <div id="v-tags-field" class="hidden tags-field"><input type="text" id="v-tags" placeholder="labels, comma separated: thm:main, prop:key"><div class="muted">Each label must sit inside a theorem-like environment, e.g. <code>\begin{theorem}\label{thm:main} … \end{theorem}</code>. No model call is needed for this mode.</div></div>
+      </div>
+      <details id="v-own"><summary>Provide the question yourself instead (advanced)</summary>
+        <div class="field">
+          <div class="label-row"><label for="v-question">Question / theorem statement</label><input type="file" id="v-qfile" accept=".tex,.md,.txt" class="hidden"><button class="secondary small" data-action="pick-file" data-input="v-qfile" data-target="v-question">Load file…</button></div>
+          <textarea id="v-question" placeholder="What is claimed? State the question the solution must answer."></textarea>
+        </div>
+        <div class="field">
+          <div class="label-row"><label for="v-solution">Candidate solution / proof</label><input type="file" id="v-sfile" accept=".tex,.md,.txt" class="hidden"><button class="secondary small" data-action="pick-file" data-input="v-sfile" data-target="v-solution">Load file…</button></div>
+          <textarea id="v-solution" placeholder="The full argument to be reviewed (LaTeX or Markdown)."></textarea>
+        </div>
+        <p class="muted">When this section is open and both boxes are filled, they are used instead of the paper above.</p>
+      </details>
     </div>
-    <h3>Quick settings (defaults come from the Settings tab)</h3>
-    <div class="grid">
-      <div><label>Generator backend</label><select id="p-gbackend" data-change="follow-backend" data-model="p-gmodel"><option value="codex">Codex</option><option value="claude">Claude Code</option></select></div>
-      <div><label>Verifier backend</label><select id="p-vbackend" data-change="follow-backend" data-model="p-vmodel"><option value="codex">Codex</option><option value="claude">Claude Code</option></select></div>
-      <div><label>Generator model</label><input type="text" id="p-gmodel" list="models"></div>
-      <div><label>Generator reasoning effort</label><select id="p-geffort"><option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option></select></div>
-      <div><label>Verifier model</label><input type="text" id="p-vmodel" list="models"></div>
-      <div><label>Verifier reasoning effort</label><select id="p-veffort"><option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option></select></div>
-      <div><label>Max rounds per branch</label><input type="number" id="p-rounds" min="1"></div>
-      <div><label>Parallel branches</label><input type="number" id="p-branches" min="1"></div>
-    </div>
-    <div class="error" id="p-error"></div>
-    <div class="row"><button class="primary" id="p-start" data-action="start-prove">Start proving</button><span class="muted" id="p-note"></span></div>
+    <aside class="panel options">
+      <div class="options-head"><h2>Review options</h2><span class="muted">Defaults come from Settings.</span></div>
+      <div class="group">
+        <div><label for="v-model">Model</label><input type="text" id="v-model" list="models"></div>
+        <div><label for="v-effort">Reasoning effort</label><select id="v-effort"><option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option></select></div>
+        <div class="pair">
+          <div><label for="v-web">Web search</label><select id="v-web"><option>live</option><option>cached</option><option>disabled</option></select></div>
+          <div><label for="v-workers">Concurrent calls</label><input type="number" id="v-workers" min="1"></div>
+        </div>
+      </div>
+      <div class="group">
+        <label class="check"><input type="checkbox" id="v-decompose" role="switch"> Decomposed review</label>
+        <label class="check"><input type="checkbox" id="v-early" role="switch"> Early stop on the first major mistake</label>
+      </div>
+      <div class="error" id="v-error"></div>
+      <button class="primary block" id="v-start" data-action="start-verify">Start review</button>
+      <p class="muted">Reviews of long papers take hours and run in the background; you can close this page.</p>
+    </aside>
   </div>
 </section>
 
 <section id="tab-runs" class="tab hidden">
-  <div class="panel" id="runs-list">
-    <div class="row"><h2 style="margin:0">Runs</h2><span style="flex:1"></span><button class="secondary" data-action="load-runs">Refresh</button></div>
-    <p class="muted" id="runs-root"></p>
-    <table><thead><tr><th>Name</th><th>Kind</th><th>Status</th><th>Decision</th><th>Updated</th></tr></thead><tbody id="runs-body"></tbody></table>
+  <div id="runs-list">
+    <header class="page-head with-action">
+      <div><h1>Runs</h1><p class="lead" id="runs-root"></p></div>
+      <button class="secondary" data-action="load-runs">Refresh</button>
+    </header>
+    <div class="panel flush">
+      <table><thead><tr><th>Name</th><th>Kind</th><th>Status</th><th>Decision</th><th>Updated</th></tr></thead><tbody id="runs-body"></tbody></table>
+    </div>
   </div>
   <div id="run-detail" class="hidden"></div>
 </section>
 
 <section id="tab-settings" class="tab hidden">
-  <div class="panel">
-    <h2>Codex CLI</h2>
-    <p class="muted">Each user signs in with their own Codex account. The GUI never stores credentials; it only calls the Codex CLI.</p>
-    <div class="grid">
-      <div><label>Codex binary (name or full path)</label><input type="text" id="s-codex-bin"></div>
-      <div><label>Codex home (optional; a separate account directory)</label><input type="text" id="s-codex-home" placeholder="leave empty for the default"></div>
+  <header class="page-head"><h1>Settings</h1><p class="lead">Command-line tools, accounts, and the defaults new runs start from.</p></header>
+  <div class="panel settings">
+    <div class="setting">
+      <div class="setting-meta"><h2>Codex CLI</h2><p class="muted">Each user signs in with their own Codex account. The GUI never stores credentials; it only calls the Codex CLI.</p></div>
+      <div class="setting-body">
+        <div class="grid two">
+          <div><label for="s-codex-bin">Codex binary (name or full path)</label><input type="text" id="s-codex-bin"></div>
+          <div><label for="s-codex-home">Codex home (optional account directory)</label><input type="text" id="s-codex-home" placeholder="leave empty for the default"></div>
+        </div>
+        <div class="row"><button class="secondary" data-action="check-cli">Check Codex</button><button class="secondary" id="login-btn" data-action="sign-in" data-slot="settings-login">Sign in…</button></div>
+        <div id="codex-detail" class="muted detail"></div>
+        <div id="settings-login"><div id="login-box" class="hidden">
+          <div class="notice" id="login-status">Starting Codex sign-in…</div>
+          <div class="row"><button class="primary hidden" id="login-open" data-action="open-login-page">Open the sign-in page</button><button class="secondary" data-action="cancel-login">Cancel sign-in</button></div>
+          <pre id="login-output"></pre>
+        </div></div>
+      </div>
     </div>
-    <div class="row"><button class="secondary" data-action="check-cli">Check Codex</button><button class="secondary" id="login-btn" data-action="sign-in" data-slot="settings-login">Sign in…</button><span id="codex-detail" class="muted"></span></div>
-    <div id="settings-login"><div id="login-box" class="hidden">
-      <div class="notice" id="login-status">Starting Codex sign-in…</div>
-      <div class="row"><button class="primary hidden" id="login-open" data-action="open-login-page">Open the sign-in page</button><button class="secondary" data-action="cancel-login">Cancel sign-in</button></div>
-      <pre id="login-output"></pre>
-    </div></div>
-  </div>
-  <div class="panel">
-    <h2>Claude Code CLI (optional)</h2>
-    <p class="muted">Prove runs can use Claude Code for generation, for review, or both (choose the backends under Prove defaults or when starting a run). It uses your own Claude account: sign in once in a terminal by running <code>claude</code> and then <code>/login</code>. The GUI never handles Claude credentials.</p>
-    <div class="grid">
-      <div><label>Claude Code binary (name or full path)</label><input type="text" id="s-claude-bin"></div>
-      <div><label>Claude Code account folder (optional; CLAUDE_CONFIG_DIR)</label><input type="text" id="s-claude-config-dir" placeholder="leave empty for your own account"></div>
+    <div class="setting">
+      <div class="setting-meta"><h2>Claude Code CLI</h2><p class="muted">Optional. Prove runs can use Claude Code for generation, review, or both, with your own Claude account: sign in once in a terminal by running <code>claude</code> and then <code>/login</code>. The GUI never handles Claude credentials.</p></div>
+      <div class="setting-body">
+        <div class="grid two">
+          <div><label for="s-claude-bin">Claude Code binary (name or full path)</label><input type="text" id="s-claude-bin"></div>
+          <div><label for="s-claude-config-dir">Account folder (optional; CLAUDE_CONFIG_DIR)</label><input type="text" id="s-claude-config-dir" placeholder="leave empty for your own account"></div>
+        </div>
+        <div class="row"><button class="secondary" data-action="check-cli">Check Claude Code</button></div>
+        <div id="claude-detail" class="muted detail"></div>
+      </div>
     </div>
-    <div class="row"><button class="secondary" data-action="check-cli">Check Claude Code</button><span id="claude-detail" class="muted"></span></div>
+    <div class="setting">
+      <div class="setting-meta"><h2>Verify defaults</h2><p class="muted">Used when a paper review starts; each run can still override the main ones.</p></div>
+      <div class="setting-body"><div class="grid" id="s-verify"></div></div>
+    </div>
+    <div class="setting">
+      <div class="setting-meta"><h2>Prove defaults</h2><p class="muted">Backends, models, budgets and review settings for new prove runs.</p></div>
+      <div class="setting-body"><div class="grid" id="s-prove"></div></div>
+    </div>
   </div>
-  <div class="panel">
-    <h2>Verify defaults</h2>
-    <div class="grid" id="s-verify"></div>
-  </div>
-  <div class="panel">
-    <h2>Prove defaults</h2>
-    <div class="grid" id="s-prove"></div>
-  </div>
-  <div class="panel">
-    <div class="error" id="s-error"></div>
-    <div class="row"><button class="primary" data-action="save-settings">Save settings</button><span class="muted" id="s-saved"></span></div>
+  <div class="savebar">
+    <div class="error" id="s-error"></div><span class="muted" id="s-saved"></span><span style="flex:1"></span>
+    <button class="primary" data-action="save-settings">Save settings</button>
   </div>
 </section>
 <section id="tab-about" class="tab">
@@ -231,6 +280,7 @@
 </section>
 <datalist id="models"><option value="gpt-6-astra"><option value="gpt-6.1-sol"><option value="gpt-5.6-sol"><option value="claude-opus-5-5"><option value="claude-sonnet-5-5"></datalist>
 </main>
+</div>
 
 <script src="/app.js"></script>
 </body>

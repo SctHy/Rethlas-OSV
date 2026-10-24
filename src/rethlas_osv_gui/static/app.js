@@ -154,6 +154,10 @@ async function checkCodex(verbose) {
     const c = s.claude || {};
     const claudeLogin = c.logged_in ? "signed in" : "not signed in: run claude, then /login, in a terminal";
     $("claude-detail").textContent = c.error || `${c.path} · ${c.version} · ${claudeLogin}`;
+    const claudePill = $("claude-pill");
+    if (c.error) { claudePill.textContent = "Claude Code: not found"; claudePill.className = "badge"; }
+    else if (c.logged_in) { claudePill.textContent = "Claude Code: signed in"; claudePill.className = "badge ok"; }
+    else { claudePill.textContent = "Claude Code: not signed in"; claudePill.className = "badge warn"; }
   } catch (e) { pill.textContent = "Codex: check failed"; pill.className = "badge bad"; if (verbose) $("codex-detail").textContent = e.message; }
 }
 let loginPoll = null;
@@ -244,7 +248,22 @@ async function loadRuns() {
       + `<td>${esc(r.name)}</td><td>${esc(r.review_kind || r.kind)}</td><td>${badge(r.status)}</td>`
       + `<td>${r.review_kind === "paper" ? "—" : decisionBadge(r.decision)}</td><td class="muted">${when(r.updated_at)}</td></tr>`);
     $("runs-body").innerHTML = rows.join("") || `<tr><td colspan="5" class="muted">No runs yet.</td></tr>`;
+    renderRecent(data.runs);
   } catch (e) { $("runs-body").innerHTML = `<tr><td colspan="5" class="error">${esc(e.message)}</td></tr>`; }
+}
+// The sidebar's most recently updated runs, each with a status dot.
+function renderRecent(runs) {
+  const items = runs.slice(0, 8).map((r) => {
+    const [label, cls] = STATUS_LABEL[r.status] || [r.status, ""];
+    const active = r.name === state.currentRun ? " active" : "";
+    return `<button class="recent-item${active}" data-open-run="${esc(r.name)}" title="${esc(label)}">`
+      + `<span class="dot ${cls}"></span><span class="recent-name">${esc(r.name)}</span></button>`;
+  });
+  $("recent-runs").innerHTML = items.join("") || `<p class="muted recent-empty">Runs you start appear here.</p>`;
+}
+function markRecent() {
+  document.querySelectorAll("#recent-runs [data-open-run]").forEach((item) =>
+    item.classList.toggle("active", item.dataset.openRun === state.currentRun));
 }
 
 // ---- safe Markdown rendering: begin ------------------------------------------------
@@ -354,14 +373,15 @@ function numbered(text) {
 
 function stopPolling() { if (state.timer) clearTimeout(state.timer); state.timer = null; }
 function closeRun() {
-  stopPolling(); state.currentRun = null;
+  stopPolling(); state.currentRun = null; markRecent();
   history.replaceState(null, "", "#runs");
   $("run-detail").classList.add("hidden"); $("runs-list").classList.remove("hidden");
   loadRuns();
 }
 
 async function openRun(name) {
-  stopPolling(); state.currentRun = name; state.eventsOffset = 0; state.inputs = null;
+  stopPolling(); state.currentRun = name; state.eventsOffset = 0; state.inputs = null; state.runSection = null;
+  state.runStatus = null; markRecent();
   history.replaceState(null, "", "#run/" + encodeURIComponent(name));
   $("runs-list").classList.add("hidden"); $("run-detail").classList.remove("hidden");
   $("run-detail").innerHTML = `<div class="panel"><p class="muted">Loading ${esc(name)}…</p></div>`;
@@ -396,57 +416,80 @@ function summaryLines(d) {
   return lines;
 }
 
-// The page skeleton for one run; refreshRun fills its elements on every poll.
+// The page skeleton for one run; refreshRun fills its elements on every poll. One
+// section shows at a time; the section tabs choose it.
 function runShell(d) {
   const copyButton = (id, key, disabled) =>
-    `<button class="secondary" id="${id}" data-action="copy-raw" data-key="${key}"${disabled ? " disabled" : ""}>Copy source</button>`;
+    `<button class="secondary small" id="${id}" data-action="copy-raw" data-key="${key}"${disabled ? " disabled" : ""}>Copy source</button>`;
+  const section = (name, body, extra = "") => `<div class="panel run-section" data-section="${name}"${extra}>${body}</div>`;
   const header = `
-    <div class="panel">
-      <div class="row">
-        <button class="secondary" data-action="close-run">← Runs</button>
-        <h2 style="margin:0">${esc(d.name)}</h2>
+    <header class="run-head">
+      <button class="back" data-action="close-run">← Runs</button>
+      <div class="run-title">
+        <h1>${esc(d.name)}</h1>
         <span class="badge">${d.kind === "prove" ? "prove" : "verify"}</span>
-        <span id="rd-status"></span><span id="rd-decision"></span><span style="flex:1"></span>
-        <span id="rd-actions"></span>
+        <span id="rd-status"></span><span id="rd-decision"></span>
+        <span class="spacer"></span>
+        <span id="rd-actions" class="run-actions"></span>
       </div>
       <div class="muted" id="rd-summary"></div>
-      <div class="muted">Folder: <code>${esc(d.path)}</code></div>
+      <div class="muted run-folder">Folder <code>${esc(d.path)}</code></div>
       <div class="error" id="rd-error"></div>
       <div id="rd-auto-report" class="muted"></div><div id="rd-draft-status" class="muted"></div>
-    </div>`;
-  const proof = `
-    <div class="panel" id="rd-proof-panel">
-      <div class="row" style="margin:0 0 12px">
-        <h2 style="margin:0">Proof ready for human review</h2><span style="flex:1"></span>
-        ${copyButton("rd-proof-copy", "proof", false)}
-      </div>
-      <div class="notice">The verifier finished with no unresolved issue. This is a handoff for a human
-        reader, not a certificate. Hashes are in <code>handoff.json</code>.</div>
-      <details open><summary>Rendered</summary><div class="md" id="rd-proof"></div></details>
-      <details><summary>Source (Markdown with LaTeX math)</summary><pre id="rd-proof-src"></pre></details>
-    </div>`;
-  const focus = `<div class="panel" id="rd-focus-panel"><h2>Question prepared from the paper</h2><div id="rd-focus"></div></div>`;
-  const report = `
-    <div class="panel">
-      <div class="row" style="margin:0 0 12px">
-        <h2 style="margin:0" id="rd-report-title">Audited feedback</h2><span style="flex:1"></span>
-        ${copyButton("rd-report-copy", "report", true)}
-      </div>
-      <span id="rd-export"></span><div class="md" id="rd-report"></div>
-    </div>`;
-  const reviews = `
-    <div class="panel">
-      <h2>Reviews of generated candidates</h2>
-      <table><thead><tr><th>#</th><th>Decision</th><th>Status</th><th>Feedback items</th><th>Reviewed</th></tr></thead>
-        <tbody id="rd-reviews"></tbody></table>
-      <div id="rd-review-view"></div>
-    </div>`;
-  const rest = `
-    <div class="panel"><h2>Inputs</h2><div id="rd-inputs"></div></div>
-    <div class="panel"><h2>Activity</h2><p class="muted">Internal execution trace. Prose here is not released feedback.</p>
-      <div class="events" id="rd-events"></div></div>
-    <div class="panel"><details><summary>Process log (stderr)</summary><pre id="rd-stderr"></pre></details></div>`;
-  return d.kind === "prove" ? header + proof + report + reviews + rest : header + focus + report + rest;
+    </header>`;
+  const tabs = [
+    ...(d.kind === "prove" ? [["proof", "Proof"]] : [["question", "Question"]]),
+    ["feedback", d.kind === "prove" ? "Latest feedback" : "Feedback"],
+    ...(d.kind === "prove" ? [["reviews", "Reviews"]] : []),
+    ["inputs", "Inputs"], ["activity", "Activity"], ["log", "Process log"],
+  ];
+  const nav = `<div class="seg" role="tablist">${tabs.map(([name, label]) =>
+    `<button role="tab" data-action="run-section" data-section="${name}">${label}`
+    + `${name === "reviews" ? ` <span class="count" id="rd-reviews-count"></span>` : ""}</button>`).join("")}</div>`;
+  const proof = section("proof", `
+    <div class="section-head"><h2>Proof ready for human review</h2>${copyButton("rd-proof-copy", "proof", false)}</div>
+    <div class="notice">The verifier finished with no unresolved issue. This is a handoff for a human
+      reader, not a certificate. Hashes are in <code>handoff.json</code>.</div>
+    <div class="md" id="rd-proof"></div>
+    <details><summary>Source (Markdown with LaTeX math)</summary><pre id="rd-proof-src"></pre></details>`, ` id="rd-proof-panel"`);
+  const focus = section("question", `<h2>Question prepared from the paper</h2><div id="rd-focus"></div>`, ` id="rd-focus-panel"`);
+  const report = section("feedback", `
+    <div class="section-head"><h2 id="rd-report-title">Audited feedback</h2>${copyButton("rd-report-copy", "report", true)}</div>
+    <span id="rd-export"></span><div class="md" id="rd-report"></div>`);
+  const reviews = section("reviews", `
+    <h2>Reviews of generated candidates</h2>
+    <table><thead><tr><th>#</th><th>Decision</th><th>Status</th><th>Feedback items</th><th>Reviewed</th></tr></thead>
+      <tbody id="rd-reviews"></tbody></table>
+    <div id="rd-review-view"></div>`);
+  const rest = section("inputs", `<h2>Inputs</h2><div id="rd-inputs"></div>`)
+    + section("activity", `<h2>Activity</h2><p class="muted">Internal execution trace. Prose here is not released feedback.</p>
+      <div class="events" id="rd-events"></div>`)
+    + section("log", `<h2>Process log</h2><pre id="rd-stderr"></pre>`);
+  return header + nav + (d.kind === "prove" ? proof + report + reviews : focus + report) + rest;
+}
+
+// The proof for a handoff, the prepared question for a paper, otherwise the feedback.
+function defaultRunSection(d) {
+  if (d.kind === "prove" && d.proof_text) return "proof";
+  if (d.kind === "verify" && d.paper_mode) return "question";
+  return "feedback";
+}
+function showRunSection(name) {
+  state.runSection = name;
+  document.querySelectorAll("#run-detail .run-section").forEach((el) => el.classList.toggle("current", el.dataset.section === name));
+  document.querySelectorAll("#run-detail .seg button").forEach((el) => {
+    el.classList.toggle("active", el.dataset.section === name);
+    el.setAttribute("aria-selected", el.dataset.section === name ? "true" : "false");
+  });
+}
+// Tabs whose content does not exist (yet) are hidden; a hidden choice falls back.
+function syncRunSections(d) {
+  const available = { proof: !!d.proof_text, question: !!d.paper_mode };
+  document.querySelectorAll("#run-detail .seg button").forEach((el) => {
+    if (el.dataset.section in available) el.classList.toggle("hidden", !available[el.dataset.section]);
+  });
+  const current = state.runSection;
+  if (!current || available[current] === false) showRunSection(defaultRunSection(d));
 }
 
 function renderInputs(d) {
@@ -472,11 +515,11 @@ function runActions(d) {
 
 function renderProve(d) {
   state.texts.proof = d.proof_text || "";
-  if (d.proof_text) {
-    $("rd-proof-panel").classList.remove("hidden");
+  if (d.proof_text && $("rd-proof-src").textContent !== d.proof_text) {
     renderMarkdown($("rd-proof"), d.proof_text);
     $("rd-proof-src").textContent = d.proof_text;
-  } else $("rd-proof-panel").classList.add("hidden");
+  }
+  $("rd-reviews-count").textContent = (d.reviews || []).length || "";
   $("rd-report-title").textContent = d.latest_review ? "Latest review feedback" : "Latest review feedback (none yet)";
   const rows = (d.reviews || []).map((r, i) => `<tr class="clickable" data-open-review="${esc(r.key)}">`
     + `<td>${i + 1}</td><td>${decisionBadge(r.decision)}</td><td>${esc(r.run_status)}</td>`
@@ -490,9 +533,7 @@ const PAPER_MODES = {
   manual: "Manual (labels chosen by the user)",
 };
 function renderPaperFocus(d) {
-  const panel = $("rd-focus-panel");
-  if (!d.paper_mode) { panel.classList.add("hidden"); return; }
-  panel.classList.remove("hidden");
+  if (!d.paper_mode) return;
   const modeLabel = PAPER_MODES[d.paper_mode] || d.paper_mode;
   if (!d.extraction) {
     const note = d.status === "running" ? "Preparing the question from the paper…"
@@ -539,6 +580,8 @@ async function refreshRun(full) {
     renderInputs(d);
     state.eventsOffset = 0; $("rd-events").innerHTML = "";
   }
+  if (state.runStatus && state.runStatus !== d.status) loadRuns();  // the sidebar's status dot
+  state.runStatus = d.status;
   $("rd-status").innerHTML = badge(d.status);
   $("rd-decision").innerHTML = d.review_kind === "paper" ? "" : decisionBadge(d.decision);
   $("rd-summary").innerHTML = summaryLines(d).map(esc).join("<br>");
@@ -546,6 +589,7 @@ async function refreshRun(full) {
   $("rd-actions").innerHTML = runActions(d);
   if (d.kind === "prove") renderProve(d);
   if (d.kind === "verify") renderPaperFocus(d);
+  syncRunSections(d);
   $("rd-export").innerHTML = d.report_markdown ? exportLinks(name, d.latest_review || null) : "";
   const template = d.template_report;
   $("rd-auto-report").innerHTML = templateReportLine(name, template);
@@ -698,6 +742,7 @@ const CLICK_ACTIONS = {
   "cancel-run": () => cancelRun(),
   "resume-run": () => resumeRun(),
   "draft-report": (el) => draftReport(el),
+  "run-section": (el) => showRunSection(el.dataset.section),
 };
 const CHANGE_ACTIONS = {
   "theme": (el) => setTheme(el.value),
@@ -709,7 +754,11 @@ document.addEventListener("click", (event) => {
   const action = target.closest("[data-action]");
   if (action && CLICK_ACTIONS[action.dataset.action]) { CLICK_ACTIONS[action.dataset.action](action); return; }
   const run = target.closest("[data-open-run]");
-  if (run) { openRun(run.dataset.openRun); return; }
+  if (run) {
+    if ($("tab-runs").classList.contains("hidden")) showTab("runs", true);
+    openRun(run.dataset.openRun);
+    return;
+  }
   const review = target.closest("[data-open-review]");
   if (review) openReview(review.dataset.openReview);
 });
@@ -733,6 +782,7 @@ document.addEventListener("change", (event) => {
     if (st.settings_error) $("s-error").textContent = st.settings_error;
   } catch (e) { $("v-error").textContent = e.message; }
   checkCodex(false);
+  loadRuns();  // fills the sidebar's recent runs
   const hash = decodeURIComponent(location.hash.slice(1));
   if (hash.startsWith("run/")) { showTab("runs", true); openRun(hash.slice(4)); }
   else if (["verify", "prove", "runs", "settings", "about"].includes(hash)) showTab(hash, true);
