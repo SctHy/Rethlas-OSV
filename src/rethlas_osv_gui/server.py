@@ -48,8 +48,21 @@ STATIC_FILES = {
     "/index.html": ("index.html", "text/html; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/app.css": ("app.css", "text/css; charset=utf-8"),
-    "/vendor/pico.min.css": ("vendor/pico.min.css", "text/css; charset=utf-8"),
 }
+# Bundled libraries (Pico CSS, KaTeX with its fonts, marked), listed once at startup so
+# the page needs no network: every file of these types under static/vendor.
+VENDOR_TYPES = {
+    ".css": "text/css; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".woff2": "font/woff2",
+}
+STATIC_FILES.update(
+    {
+        f"/{path.relative_to(STATIC).as_posix()}": (path.relative_to(STATIC).as_posix(), VENDOR_TYPES[path.suffix])
+        for path in sorted((STATIC / "vendor").rglob("*"))
+        if path.is_file() and path.suffix in VENDOR_TYPES
+    }
+)
 DEFAULT_HOME = Path("~/.osverifier").expanduser()
 # Names a browser may use for this server. Anything else in the Host header means the
 # request was routed here under a foreign name (DNS rebinding) and is refused.

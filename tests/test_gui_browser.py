@@ -37,6 +37,11 @@ def browser_page(served, tmp_path):
         context.grant_permissions(["clipboard-read", "clipboard-write"], origin=client.base)
         page = context.new_page()
         problems = []
+        # Nothing may leave this machine: every library is bundled with the page.
+        context.route(
+            lambda url: not url.startswith(client.base),
+            lambda route: (problems.append(f"external request: {route.request.url}"), route.abort()),
+        )
         page.on("pageerror", lambda error: problems.append(f"page error: {error}"))
         # API errors are expected answers here; static assets and scripts must not fail.
         page.on(
@@ -55,8 +60,7 @@ def browser_page(served, tmp_path):
         page.goto(client.base + "/")
         until(page, "document.getElementById('codex-pill')?.textContent.includes('signed in')")
         yield app, client, page
-        # Library loads from the pinned CDN may fail offline; nothing else may.
-        assert [p for p in problems if "cdnjs" not in p] == []
+        assert problems == []
         browser.close()
 
 
@@ -180,6 +184,10 @@ def test_finished_runs_show_reports_reviews_and_copy_sources(browser_page):
     page.click("#runs-body tr[data-open-run='proved']")
     until(page, "document.getElementById('rd-status')?.textContent === 'Ready for human'")
     assert page.is_visible("#rd-proof-panel") and "Indeed" in page.text_content("#rd-proof")
+    # Markdown and math render from the bundled marked and KaTeX, with no network.
+    assert page.evaluate("document.querySelector('#rd-proof h1')?.textContent") == "Proof"
+    until(page, "!!document.querySelector('#rd-proof .katex')")
+    assert page.evaluate("document.fonts.check('16px KaTeX_Main')")
     page.click("#rd-proof-copy")
     until(page, "document.getElementById('rd-proof-copy')?.textContent === 'Copied'")
     assert page.evaluate("navigator.clipboard.readText()") == "# Proof\n\nIndeed $1 = 1$."

@@ -47,12 +47,14 @@ def test_only_the_page_files_are_served(served):
 
     served_files = (
         ("/", "text/html"), ("/app.js", "text/javascript"), ("/app.css", "text/css"),
-        ("/vendor/pico.min.css", "text/css"),
+        ("/vendor/pico.min.css", "text/css"), ("/vendor/marked/marked.min.js", "text/javascript"),
+        ("/vendor/katex/fonts/KaTeX_Main-Regular.woff2", "font/woff2"),
     )
     for path, kind in served_files:
         with urllib.request.urlopen(client.base + path) as response:
             assert response.headers["Content-Type"].startswith(kind)
-    for path in ("/server.py", "/static/app.js", "/../server.py", "/app.js.map", "/vendor/PICO-LICENSE.md"):
+    for path in ("/server.py", "/static/app.js", "/../server.py", "/app.js.map", "/vendor/PICO-LICENSE.md",
+                 "/vendor/katex/LICENSE", "/vendor/katex/fonts/KaTeX_Main-Regular.ttf", "/vendor/../app.js"):
         with pytest.raises(urllib.error.HTTPError) as refused:
             urllib.request.urlopen(client.base + path)
         assert refused.value.code == 404
@@ -71,12 +73,31 @@ def test_csp_restricts_requests_and_precedes_every_resource():
     assert match.start() < first_resource
 
 
-def test_external_libraries_are_integrity_pinned():
-    tags = re.findall(r"<(?:script|link)\b[^>]*https://[^>]*>", page())
-    assert tags
-    for tag in tags:
-        assert re.search(r'integrity="sha384-[A-Za-z0-9+/=]{64}"', tag), tag
-        assert 'crossorigin="anonymous"' in tag, tag
+# The bundled libraries are the exact npm releases; these are their SRI hashes, as the
+# page pinned them when it still loaded them from cdnjs.
+VENDORED = {
+    "katex/katex.min.js": "sha384-7zkQWkzuo3B5mTepMUcHkMB5jZaolc2xDwL6VFqjFALcbeS9Ggm/Yr2r3Dy4lfFg",
+    "katex/katex.min.css": "sha384-nB0miv6/jRmo5UMMR1wu3Gz6NLsoTkbqJghGIsx//Rlm+ZU03BU6SQNC66uf4l5+",
+    "katex/contrib/auto-render.min.js": "sha384-43gviWU0YVjaDtb/GhzOouOXtZMP/7XUzwPTstBeZFe/+rCMvRwr4yROQP43s0Xk",
+    "marked/marked.min.js": "sha384-/TQbtLCAerC3jgaim+N78RZSDYV7ryeoBCVqTuzRrFec2akfBkHS7ACQ3PQhvMVi",
+}
+
+
+def test_page_loads_nothing_from_other_origins_and_vendored_files_are_pinned():
+    import base64
+    import hashlib
+
+    html = page()
+    assert not re.search(r"""(?:src|href)=["']?(?:https?:)?//""", html.split("</head>")[0]), "external resource"
+    policy = re.search(r'Content-Security-Policy" content="([^"]+)"', html).group(1)
+    assert "http" not in policy and "cdnjs" not in policy
+    for name, expected in VENDORED.items():
+        data = (STATIC / "vendor" / name).read_bytes()
+        assert "sha384-" + base64.b64encode(hashlib.sha384(data).digest()).decode() == expected, name
+        assert f'/vendor/{name}"' in html, f"{name} is not used by the page"
+    fonts = sorted(p.name for p in (STATIC / "vendor/katex/fonts").glob("*.woff2"))
+    css = (STATIC / "vendor/katex/katex.min.css").read_text()
+    assert len(fonts) == 20 and all(f"fonts/{name}" in css for name in fonts)
 
 
 def test_run_data_never_becomes_inline_code_or_raw_markup():
