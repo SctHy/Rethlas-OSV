@@ -80,10 +80,13 @@ and their output in `scratch/`. Use computation whenever it can test an idea qui
 
 Record what was checked, how, and the outcome in the matching memory channel
 (`toy_examples`, `counterexamples`, `immediate_conclusions`), with the script path.
-Computation is evidence for you, not a proof for the reader: the verifier cannot run
-code. A finite exhaustive check may appear in the blueprint only with an exact
-statement of what was enumerated and why it covers every case. Prefer arguments a
-human can check, and keep each run short (well under a minute).
+Computation is evidence for you, not a proof for the reader. The verifier sees only the
+blueprint's text: it cannot open `scratch/`, run code, or see any output. Never cite
+scripts, files, `tools/python` or computed results in `results/blueprint.md`, not even
+as a supplementary remark; an unverifiable citation makes the review inconclusive.
+The blueprint must be a self-contained proof. If a finite case analysis is part of the
+argument, write the cases out so a human can check each one. Keep each run short
+(well under a minute).
 
 ## Reacting to OSVerify feedback
 
