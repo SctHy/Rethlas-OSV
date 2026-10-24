@@ -18,8 +18,8 @@ class Generator:
     def __init__(self, turns):
         self.turns, self.calls = list(turns), []
 
-    def generate(self, workspace, attempt, prompt, session_id, search):
-        self.calls.append({"prompt": prompt, "session_id": session_id, "search": search})
+    def generate(self, workspace, attempt, prompt, session_id, search, effort=None):
+        self.calls.append({"prompt": prompt, "session_id": session_id, "search": search, "effort": effort})
         attempt.mkdir(parents=True)
         ready, proof = self.turns.pop(0)
         atomic_text(workspace / "problem.md", "GENERATOR CHANGED THE QUESTION")
@@ -94,6 +94,26 @@ def test_revision_loop_preserves_question_feedback_session_and_exact_handoff(
     # A finished run validates receipts and launches nothing on resume.
     assert experiment.run(p, run) == result
     assert len(generator.calls) == len(reviewer.calls) == 2
+
+
+def test_turns_answering_revise_or_reject_use_the_revision_effort(tmp_path):
+    p = problem(tmp_path)
+    turns = [(False, "Partial draft"), (True, "First full"), (True, "Second full"), (True, "Final")]
+    generator = Generator(turns)
+    # Partial PASS keeps the base effort; REVISE and REJECT raise it for the next turn.
+    reviewer = Reviewer(["PASS", "REVISE", "REJECT", "READY_FOR_HUMAN"])
+    run = tmp_path / "run"
+    experiment = Experiment(generator, reviewer, LoopConfig(4, revision_effort="max"))
+    assert experiment.run(p, run).status == "ready_for_human"
+    assert [c["effort"] for c in generator.calls] == [None, None, "max", "max"]
+    events = [json.loads(line) for line in (run / "trajectory.jsonl").read_text().splitlines()]
+    assert [e.get("effort") for e in events if e["event"] == "generation_started"] == [None, None, "max", "max"]
+    assert read_json(run / "manifest.json")["provenance"]["revision_effort"] == "max"
+    # The setting is frozen with the run.
+    with pytest.raises(FrozenRunMismatch):
+        Experiment(Generator([]), Reviewer([]), LoopConfig(4)).run(p, run)
+    with pytest.raises(ValueError):
+        LoopConfig(revision_effort="huge")
 
 
 def test_partial_generation_is_reviewed_and_budget_can_extend(tmp_path):
@@ -357,7 +377,7 @@ def test_workspace_restore_replaces_generator_links_instead_of_writing_through(t
     (refs / "notes.md").write_text("Reference notes\n")
 
     class LinkingGenerator(Generator):
-        def generate(self, workspace, attempt, prompt, session_id, search):
+        def generate(self, workspace, attempt, prompt, session_id, search, effort=None):
             turn = super().generate(workspace, attempt, prompt, session_id, search)
             # A workspace-write sandbox permits creating these links inside the workspace.
             for name in ("AGENTS.md", "problem.md", "references/notes.md"):

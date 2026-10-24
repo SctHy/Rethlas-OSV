@@ -38,6 +38,7 @@ from .contracts import (
 )
 
 ROOT = Path(__file__).parent
+REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 
 
 def sha(path):
@@ -75,12 +76,24 @@ class LoopConfig:
     max_rounds: int = 10
     search_policy: str = "alternating"
     generation_branches: int = 1
+    # Reasoning effort for generation turns that answer a REVISE or REJECT review; None
+    # keeps the generator's own effort for every turn.
+    revision_effort: str | None = None
 
     def __post_init__(self):
         if self.max_rounds < 1 or self.search_policy not in ("alternating", "live", "disabled"):
             raise ValueError("invalid round budget or generation search policy")
         if self.generation_branches < 1:
             raise ValueError("generation_branches must be positive")
+        if self.revision_effort not in (None, *REASONING_EFFORTS):
+            raise ValueError(f"revision effort must be one of {', '.join(REASONING_EFFORTS)}")
+
+    def turn_effort(self, feedback):
+        """The effort override for a turn answering ``feedback``, or None for the default.
+        It depends only on the stored feedback, so a resumed run chooses the same."""
+        if self.revision_effort and feedback and feedback.get("decision") in ("REVISE", "REJECT"):
+            return self.revision_effort
+        return None
 
 
 class Experiment:
@@ -135,6 +148,7 @@ class Experiment:
             },
             "search_policy": self.config.search_policy,
             "generation_branches": self.config.generation_branches,
+            "revision_effort": self.config.revision_effort,
             "code_sha256": code_fingerprint(),
         }
         manifest = {"fingerprint": digest(frozen), "provenance": frozen}
@@ -500,6 +514,7 @@ class Experiment:
                     "Use only this workspace's memory, draft, and feedback. Do not inspect sibling "
                     "branches or share their sessions or results.\n" + prompt
                 )
+            effort = self.config.turn_effort(feedback)
             self.emit(
                 directory,
                 "generation_started",
@@ -507,10 +522,11 @@ class Experiment:
                 branch=branch_id,
                 search=search,
                 resume_session=session_id,
+                **({"effort": effort} if effort else {}),
             )
             try:
                 turn, session_id = self.generator.generate(
-                    workspace, attempt, prompt, session_id, search
+                    workspace, attempt, prompt, session_id, search, effort=effort
                 )
                 candidate = self.read_candidate(workspace)
             except BaseException as exc:

@@ -233,6 +233,14 @@ increase `--max-rounds` to extend the same experiment. Other input, model, searc
 code, branch count, or configuration changes require a fresh run directory. Partial work remains
 available on exhaustion or failure.
 
+`--generator-revision-effort LEVEL` raises the generator's reasoning effort only for turns
+that answer a REVISE or REJECT review; first drafts and continuations after a partial PASS
+keep `--generator-reasoning-effort`. For example, `--generator-reasoning-effort medium
+--generator-revision-effort xhigh` keeps easy problems cheap and spends more only where a
+review found a problem. The level cannot be below the base effort, is frozen with the run,
+and each affected turn records it in its `generation_started` event and `command.json`.
+The GUI offers it under Prove defaults.
+
 Explicit Codex quota exhaustion is handled separately from transient failures:
 
 - The generator or any verifier role can stop the invocation with `status=incomplete`.

@@ -10,11 +10,11 @@ from osverifier.frozen import python_module_command
 from osverifier.storage import atomic_json, read_json
 
 from rethlas_osv.claude import DEFAULT_CLAUDE_MODEL
+from rethlas_osv.runner import REASONING_EFFORTS
 
 BACKENDS = ("codex", "claude")
 # Each backend's default model; switching a backend swaps an untouched default.
 BACKEND_DEFAULT_MODELS = {"codex": DEFAULT_MODEL, "claude": DEFAULT_CLAUDE_MODEL}
-REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 WEB_SEARCH_MODES = ("disabled", "cached", "live")
 SEARCH_POLICIES = ("alternating", "live", "disabled")
 
@@ -43,6 +43,7 @@ DEFAULTS: dict = {
         "verifier_backend": "codex",
         "generator_model": DEFAULT_MODEL,
         "generator_reasoning_effort": "xhigh",
+        "generator_revision_effort": "",
         "verifier_model": DEFAULT_MODEL,
         "verifier_reasoning_effort": "xhigh",
         "max_rounds": 10,
@@ -171,6 +172,10 @@ def validate_settings(raw: dict) -> dict:
             p["generator_reasoning_effort"],
             REASONING_EFFORTS,
         ),
+        "generator_revision_effort": _choice(
+            "prove", "generator_revision_effort", p["generator_revision_effort"] or "",
+            ("", *REASONING_EFFORTS),
+        ),
         "verifier_model": _text("prove", "verifier_model", p["verifier_model"]),
         "verifier_reasoning_effort": _choice(
             "prove", "verifier_reasoning_effort", p["verifier_reasoning_effort"], REASONING_EFFORTS
@@ -195,6 +200,11 @@ def validate_settings(raw: dict) -> dict:
         "decompose": _bool("prove", "decompose", p["decompose"]),
         "early_stop": _bool("prove", "early_stop", p["early_stop"]),
     }
+    revision = merged["prove"]["generator_revision_effort"]
+    if revision and REASONING_EFFORTS.index(revision) < REASONING_EFFORTS.index(
+        merged["prove"]["generator_reasoning_effort"]
+    ):
+        raise ValueError("prove.generator_revision_effort cannot be below generator_reasoning_effort")
     for section in ("verify", "prove"):
         if not merged[section]["decompose"] and not merged[section]["early_stop"]:
             raise ValueError(f"{section}: disabling early stop requires the decomposed workflow")
@@ -345,6 +355,8 @@ def prove_argv(run_dir: Path, settings: dict, problem: Path) -> list[str]:
     if p["max_issues"] is not None:
         argv += ["--max-issues", str(p["max_issues"])]
     argv += ["--generator-backend", p["generator_backend"], "--verifier-backend", p["verifier_backend"]]
+    if p["generator_revision_effort"]:
+        argv += ["--generator-revision-effort", p["generator_revision_effort"]]
     if "claude" in (p["generator_backend"], p["verifier_backend"]):
         argv += ["--claude-bin", settings["claude_bin"]]
         if settings["claude_config_dir"]:

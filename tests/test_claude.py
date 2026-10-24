@@ -93,6 +93,9 @@ def test_generator_command_is_isolated_and_follows_the_turn_search_setting(tmp_p
     assert json.loads(flag(offline, "--settings"))["sandbox"]["network"]["allowedDomains"] == []
     assert "Web" not in flag(offline, "--tools") and "Task" not in flag(offline, "--tools")
     assert "--agents" not in offline and flag(offline, "--resume") == "session-1"
+    assert flag(offline, "--effort") == "xhigh"
+    (tmp_path / "revising").mkdir()
+    assert flag(quiet.command(workspace, tmp_path / "revising", "session-1", "live", "max"), "--effort") == "max"
     assert read_json(attempt / "mcp.json")["mcpServers"]["rethlas"]["env"]["RETHLAS_ALLOW_SEARCH"] == "0"
 
 
@@ -217,6 +220,13 @@ def test_cli_freezes_the_claude_backends_with_claude_default_models(tmp_path, cl
     assert provenance["generator"]["model"] == DEFAULT_CLAUDE_MODEL
     assert provenance["verifier"]["backend"]["kind"] == "claude_code"
     assert provenance["verifier"]["backend"]["model"] == DEFAULT_CLAUDE_MODEL
+    # A revision effort below the base effort is refused before any run starts.
+    assert cli.main([
+        "--problem", str(problem), "--run-dir", str(tmp_path / "other"), "--prepare-only",
+        "--generator-backend", "claude", "--claude-bin", str(claude_bin),
+        "--generator-reasoning-effort", "high", "--generator-revision-effort", "low",
+    ]) == 1
+    assert "cannot be below" in capsys.readouterr().err
 
 
 def test_review_prompt_inlines_each_document_once_and_shares_a_role_system_prompt(

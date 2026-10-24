@@ -363,7 +363,7 @@ class ClaudeGenerator:
             tools += ["WebSearch", "WebFetch"]
         return tools
 
-    def command(self, workspace, attempt, session_id, web_search):
+    def command(self, workspace, attempt, session_id, web_search, effort=None):
         network = web_search != "disabled"
         memory_server = python_module_command("rethlas_osv.memory_server")
         atomic_json(
@@ -384,7 +384,7 @@ class ClaudeGenerator:
         if self.agent_depth > 0:
             tools.append("Task")
         argv = _isolated(
-            self.claude_bin, self.model, self.reasoning_effort, network, tools,
+            self.claude_bin, self.model, effort or self.reasoning_effort, network, tools,
             GenerationTurn.model_json_schema(),
         )
         argv += [
@@ -415,11 +415,11 @@ class ClaudeGenerator:
             argv += ["--resume", session_id]
         return argv
 
-    def generate(self, workspace: Path, attempt: Path, prompt: str, session_id, web_search):
+    def generate(self, workspace: Path, attempt: Path, prompt: str, session_id, web_search, effort=None):
         attempt.mkdir(parents=True)
         atomic_json(attempt / "schema.json", GenerationTurn.model_json_schema())
         atomic_text(attempt / "prompt.txt", prompt)
-        argv = self.command(workspace, attempt, session_id, web_search)
+        argv = self.command(workspace, attempt, session_id, web_search, effort)
         atomic_json(
             attempt / "command.json",
             {"argv": argv, "backend": self.identity, "session_id": session_id},

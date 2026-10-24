@@ -13,7 +13,7 @@ from osverifier.workflow import DecomposingVerifier, WorkflowConfig
 from .claude import DEFAULT_CLAUDE_MODEL, ClaudeBackend, ClaudeGenerator
 from .encoding import text_encoding_warning, tolerate_console_encoding
 from .generator import CodexGenerator
-from .runner import ROOT, Experiment, LoopConfig
+from .runner import REASONING_EFFORTS, ROOT, Experiment, LoopConfig
 
 
 def parser():
@@ -32,7 +32,13 @@ def parser():
     p.add_argument("--verifier-backend", choices=backends, default="codex", help="CLI that runs OSVerify review roles (default: codex)")
     p.add_argument("--generator-model", help=f"default {DEFAULT_MODEL} (codex) or {DEFAULT_CLAUDE_MODEL} (claude); `osverify models` lists Codex choices")
     p.add_argument("--verifier-model", help=f"default {DEFAULT_MODEL} (codex) or {DEFAULT_CLAUDE_MODEL} (claude)")
-    p.add_argument("--generator-reasoning-effort", default="xhigh")
+    p.add_argument("--generator-reasoning-effort", choices=REASONING_EFFORTS, default="xhigh")
+    p.add_argument(
+        "--generator-revision-effort",
+        choices=REASONING_EFFORTS,
+        help="Effort for turns that answer a REVISE or REJECT review (default: unchanged); "
+        "at least --generator-reasoning-effort",
+    )
     p.add_argument("--verifier-reasoning-effort", default="xhigh")
     p.add_argument("--codex-bin", default=os.environ.get("CODEX_BIN", "codex"))
     p.add_argument("--codex-home", type=Path)
@@ -98,6 +104,10 @@ def main(argv=None):
     try:
         if args.root_only and args.no_early_stop:
             raise ValueError("--no-early-stop cannot be combined with --root-only")
+        if args.generator_revision_effort and REASONING_EFFORTS.index(
+            args.generator_revision_effort
+        ) < REASONING_EFFORTS.index(args.generator_reasoning_effort):
+            raise ValueError("--generator-revision-effort cannot be below --generator-reasoning-effort")
         generator_options = dict(
             reasoning_effort=args.generator_reasoning_effort,
             timeout_seconds=args.generator_timeout or None,
@@ -154,7 +164,10 @@ def main(argv=None):
         experiment = Experiment(
             generator,
             verifier,
-            LoopConfig(args.max_rounds, args.search_policy, args.generation_branches),
+            LoopConfig(
+                args.max_rounds, args.search_policy, args.generation_branches,
+                revision_effort=args.generator_revision_effort,
+            ),
             event_sink=lambda row: print(json.dumps(row, ensure_ascii=False), flush=True),
         )
         result = experiment.run(

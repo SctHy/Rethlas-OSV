@@ -213,6 +213,7 @@ PROVE = {
     "--generator-model": _text,
     "--verifier-model": _text,
     "--generator-reasoning-effort": _choice(REASONING_EFFORTS),
+    "--generator-revision-effort": _choice(REASONING_EFFORTS),
     "--verifier-reasoning-effort": _choice(REASONING_EFFORTS),
     "--codex-bin": _codex_bin,
     "--codex-home": _codex_home,

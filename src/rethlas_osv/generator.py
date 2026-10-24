@@ -62,7 +62,7 @@ class CodexGenerator:
             "compute": compute.environment(),
         }
 
-    def command(self, workspace, attempt, session_id, web_search):
+    def command(self, workspace, attempt, session_id, web_search, effort=None):
         backend = self.transport
         memory_server = python_module_command("rethlas_osv.memory_server")
         command = [backend.codex_bin, "exec"]
@@ -85,7 +85,7 @@ class CodexGenerator:
             "sandbox_mode": "workspace-write",
             # Independent-thinking turns also lose shell network access, not only search.
             "sandbox_workspace_write.network_access": web_search != "disabled",
-            "model_reasoning_effort": backend.reasoning_effort,
+            "model_reasoning_effort": effort or backend.reasoning_effort,
             "web_search": web_search,
             "features.multi_agent": self.agent_depth > 0,
             "agents.max_threads": self.agent_threads,
@@ -114,12 +114,13 @@ class CodexGenerator:
         return command + ["-"]
 
     def generate(
-        self, workspace: Path, attempt: Path, prompt: str, session_id: str | None, web_search: str
+        self, workspace: Path, attempt: Path, prompt: str, session_id: str | None, web_search: str,
+        effort: str | None = None,
     ):
         attempt.mkdir(parents=True)
         atomic_json(attempt / "schema.json", GenerationTurn.model_json_schema())
         atomic_text(attempt / "prompt.txt", prompt)
-        argv = self.command(workspace, attempt, session_id, web_search)
+        argv = self.command(workspace, attempt, session_id, web_search, effort)
         atomic_json(
             attempt / "command.json",
             {

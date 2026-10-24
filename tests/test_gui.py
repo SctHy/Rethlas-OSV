@@ -116,7 +116,12 @@ def test_claude_backends_reach_the_prove_command_and_models_follow_the_switch(tm
     assert parsed.generator_backend == parsed.verifier_backend == "claude"
     assert parsed.claude_bin == "/opt/claude" and str(parsed.claude_config_dir) == "/tmp/claude-acct"
     codex_only = prove_argv(tmp_path / "run", validate_settings({}), tmp_path / "p.md")
-    assert "--claude-bin" not in codex_only
+    assert "--claude-bin" not in codex_only and "--generator-revision-effort" not in codex_only
+    revising = validate_settings({"prove": {"generator_reasoning_effort": "medium", "generator_revision_effort": "high"}})
+    parsed = rethlas_cli.parser().parse_args(prove_argv(tmp_path / "run", revising, tmp_path / "p.md")[3:])
+    assert parsed.generator_reasoning_effort == "medium" and parsed.generator_revision_effort == "high"
+    with pytest.raises(ValueError, match="cannot be below"):
+        validate_settings({"prove": {"generator_reasoning_effort": "high", "generator_revision_effort": "low"}})
 
 
 def test_resume_checks_the_recorded_claude_binary_and_account(tmp_path):

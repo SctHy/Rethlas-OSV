@@ -29,7 +29,7 @@ class ParallelGenerator:
         self.barrier = threading.Barrier(width, timeout=5)
         self.calls, self.partial, self.identical = [], partial, identical
 
-    def generate(self, workspace, attempt, prompt, session_id, search):
+    def generate(self, workspace, attempt, prompt, session_id, search, effort=None):
         branch, round_number = int(workspace.parent.name), int(attempt.parent.name)
         self.calls.append(
             {
@@ -143,7 +143,7 @@ def test_failed_later_generation_keeps_new_draft_and_completed_sibling(tmp_path)
         def __init__(self):
             self.calls, self.failed = [], False
 
-        def generate(self, workspace, attempt, prompt, session_id, search):
+        def generate(self, workspace, attempt, prompt, session_id, search, effort=None):
             branch, round_number = int(workspace.parent.name), int(attempt.parent.name)
             self.calls.append((branch, round_number))
             atomic_json(attempt / "events-summary.json", {"thread_ids": [f"session-{branch}"]})

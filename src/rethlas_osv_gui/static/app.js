@@ -24,6 +24,7 @@ const VERIFY_FIELDS = [
 const PROVE_FIELDS = [
   ["generator_backend", "Generator backend", "backend"], ["verifier_backend", "Verifier backend", "backend"],
   ["generator_model", "Generator model", "text"], ["generator_reasoning_effort", "Generator reasoning effort", "effort"],
+  ["generator_revision_effort", "Generator effort after REVISE / REJECT", "revision"],
   ["verifier_model", "Verifier model", "text"], ["verifier_reasoning_effort", "Verifier reasoning effort", "effort"],
   ["max_rounds", "Max rounds per branch", "number"], ["generation_branches", "Parallel branches", "number"],
   ["search_policy", "Generator search policy", "policy"], ["verifier_web_search", "Verifier web search", "web"],
@@ -32,7 +33,9 @@ const PROVE_FIELDS = [
   ["workers", "Concurrent verifier calls", "number"], ["max_issues", "Max issues (0 = no cap)", "number"],
   ["max_attempts", "Attempts per stage", "number"], ["decompose", "Decomposed review", "bool"], ["early_stop", "Early stop on the first major mistake", "bool"],
 ];
-const CHOICES = { effort: ["low", "medium", "high", "xhigh", "max"], web: ["live", "cached", "disabled"], policy: ["alternating", "live", "disabled"], backend: ["codex", "claude"] };
+const CHOICES = { effort: ["low", "medium", "high", "xhigh", "max"], web: ["live", "cached", "disabled"], policy: ["alternating", "live", "disabled"], backend: ["codex", "claude"],
+  revision: ["", "low", "medium", "high", "xhigh", "max"] };
+const CHOICE_LABELS = { "": "unchanged" };
 
 async function api(path, options = {}) {
   const response = await fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
@@ -76,7 +79,10 @@ function fieldInput(section, key, type) {
   const id = `s-${section}-${key}`;
   if (type === "bool") return `<label class="check"><input type="checkbox" id="${id}"> yes</label>`;
   const follow = type === "backend" ? ` data-change="follow-backend" data-model="s-${section}-${key.replace("_backend", "_model")}"` : "";
-  if (CHOICES[type]) return `<select id="${id}"${follow}>${CHOICES[type].map((c) => `<option>${c}</option>`).join("")}</select>`;
+  if (CHOICES[type]) {
+    const options = CHOICES[type].map((c) => `<option value="${c}">${CHOICE_LABELS[c] ?? c}</option>`).join("");
+    return `<select id="${id}"${follow}>${options}</select>`;
+  }
   if (type === "number") return `<input type="number" id="${id}" step="any">`;
   return `<input type="text" id="${id}" list="models">`;
 }
