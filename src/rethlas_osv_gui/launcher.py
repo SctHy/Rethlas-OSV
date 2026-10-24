@@ -18,6 +18,7 @@ ENTRY_POINTS = {
     "osverifier_reports.reference_tools",
     "rethlas_osv.cli",
     "rethlas_osv.memory_server",
+    "rethlas_osv.compute",
     "osverifier_reports.paper_prepare",
     "rethlas_osv_gui.server",
 }

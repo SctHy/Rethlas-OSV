@@ -8,6 +8,13 @@ Check that the draft attempts every required conclusion under the original assum
 Include the necessary supporting results before their uses and preserve the full target
 statement. Partial branches and isolated lemmas must not be submitted as full solutions.
 
+Before submitting, test the draft computationally wherever it can be tested: run
+`tools/python` (see AGENTS.md) on the claims it relies on that admit a finite, symbolic
+or numerical check, such as small cases of a statement, explicit constructions and their
+properties, identities and calculations. A review round costs far more than a check, and
+a failed check is cheaper to repair now. Record each check and its outcome in memory.
+Skip this only when no claim in the draft admits such a check, and say so in `progress`.
+
 When a full candidate is ready, save it to `results/blueprint.md` and end the turn with
 the required JSON response, setting `candidate_ready=true`. The Python orchestrator
 will invoke OSVerify and return only independently approved feedback on continuation.

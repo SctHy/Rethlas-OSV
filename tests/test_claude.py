@@ -217,3 +217,58 @@ def test_cli_freezes_the_claude_backends_with_claude_default_models(tmp_path, cl
     assert provenance["generator"]["model"] == DEFAULT_CLAUDE_MODEL
     assert provenance["verifier"]["backend"]["kind"] == "claude_code"
     assert provenance["verifier"]["backend"]["model"] == DEFAULT_CLAUDE_MODEL
+
+
+def test_review_prompt_inlines_each_document_once_and_shares_a_role_system_prompt(
+    tmp_path, claude_bin, monkeypatch
+):
+    monkeypatch.setenv("FAKE_OUTPUT", json.dumps({"issues": []}))
+    backend = ClaudeBackend(model="fixture", claude_bin=str(claude_bin), web_search="disabled")
+    solution = "Line one of the proof.\nLine two, QED."
+    payload = {
+        "request": {"question": "Show Q.", "candidate_solution": solution},
+        "numbered_solution": "1: Line one of the proof.\n2: Line two, QED.",
+        "focus_text": solution,
+        "scope": {"scope_id": "root"},
+    }
+    prompts = []
+    for name in ("first", "second"):
+        attempt = tmp_path / name
+        attempt.mkdir()
+        backend.generate("proposer", payload, {"type": "object"}, attempt)
+        argv = read_json(attempt / "command.json")["argv"]
+        assert flag(argv, "--system-prompt-file") == str(attempt / "system-prompt.md")
+        prompts.append(((attempt / "system-prompt.md").read_text(), (attempt / "prompt.txt").read_text()))
+    (system, prompt), (system_again, _) = prompts
+    # Same role, same system prompt: later calls read it from the prompt cache.
+    assert system == system_again and "<policy>" in system and "propose-solution-issues" in system
+    assert prompt.count("Line two, QED.") == 1, "each document once"
+    inlined = json.loads(prompt.split('<file name="input.json">\n')[1].split("\n</file>")[0])
+    assert inlined["request"]["candidate_solution"] == "<the text of candidate-solution.md>"
+    assert inlined["scope"] == {"scope_id": "root"}
+    assert "(identical to candidate-solution.md)" in prompt
+    # The files stay on disk as the call's record.
+    assert (tmp_path / "first/workspace/candidate-solution.md").read_text() == solution
+
+
+def test_compute_launcher_runs_scripts_inline_code_and_stdin(tmp_path):
+    from rethlas_osv import compute
+    from rethlas_osv.runner import Experiment
+
+    class Generator:
+        identity = {"model": "fixture", "reasoning_effort": "low"}
+
+    workspace = tmp_path / "ws"
+    Experiment(Generator(), None).prepare_workspace(workspace, tmp_path, "Q", {"references": {}})
+    launcher = workspace / "tools/python"
+    assert launcher.stat().st_mode & stat.S_IXUSR and (workspace / "scratch").is_dir()
+    script = workspace / "scratch/check.py"
+    script.write_text("import sys, sympy\nx = sympy.symbols('x')\nprint(sympy.factor(x**2 - 1), sys.argv[1:])\n")
+    def run(*args, **options):
+        return subprocess.run([str(launcher), *args], cwd=workspace, capture_output=True, text=True, **options)
+
+    assert run("scratch/check.py", "a").stdout.strip() == "(x - 1)*(x + 1) ['a']"
+    assert run("-c", "import networkx as nx; print(nx.cycle_graph(5).number_of_edges())").stdout.strip() == "5"
+    assert run("-", input="import numpy; print(int(numpy.eye(3).trace()))").stdout.strip() == "3"
+    assert run().returncode == 2
+    assert all(compute.environment().values()), "sympy, networkx and numpy are installed"

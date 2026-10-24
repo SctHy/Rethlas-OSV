@@ -13,6 +13,7 @@ from osverifier.frozen import python_module_command
 from osverifier.quota import communicate_with_quota_detection
 from osverifier.storage import atomic_json, atomic_text, read_json
 
+from . import compute
 from .contracts import GenerationTurn, InvalidGenerationOutput
 from .encoding import utf8_environment
 
@@ -58,6 +59,7 @@ class CodexGenerator:
             "agent_depth": self.agent_depth,
             "python": sys.executable,
             "fastmcp": version("fastmcp"),
+            "compute": compute.environment(),
         }
 
     def command(self, workspace, attempt, session_id, web_search):

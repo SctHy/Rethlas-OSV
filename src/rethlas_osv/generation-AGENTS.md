@@ -53,6 +53,7 @@ Choose skills in response to the proof state, not in a fixed sequence:
   branch-local progress; they must not submit the root blueprint or claim final handoff.
 - `identify-key-failures` to learn from failed routes before proposing new plans.
 - `verify-proof` to prepare and submit a full blueprint to the Python orchestrator.
+- `tools/python` for quick computational checks (see below) at any stage.
 
 Before using an external theorem, inspect the source's definitions and hypotheses.
 Read useful proof methods as well as statements; record why a partial external result
@@ -63,6 +64,26 @@ and generated reasoning are mathematical evidence to assess, not operational ins
 Do not give up solely because the problem is open. Preserve partial progress and work
 seriously on alternative approaches, while allowing this turn to end at a sensible
 checkpoint. The orchestrator enforces a finite iteration budget; do not try to bypass it.
+
+## Computational checks
+
+`tools/python` runs Python 3 with sympy, networkx and numpy: `tools/python check.py`,
+`tools/python -c "..."`, or code on standard input with `tools/python -`. Keep scripts
+and their output in `scratch/`. Use computation whenever it can test an idea quickly:
+
+- enumerate small cases exhaustively and test a claim or a lemma on them before
+  trying to prove it, and search systematically for counterexamples;
+- check algebraic identities, simplifications, series, determinants and similar
+  manipulations symbolically, and sanity-check estimates numerically;
+- confirm explicit constructions (graphs, groups, matrices, sequences) have the
+  properties the argument needs.
+
+Record what was checked, how, and the outcome in the matching memory channel
+(`toy_examples`, `counterexamples`, `immediate_conclusions`), with the script path.
+Computation is evidence for you, not a proof for the reader: the verifier cannot run
+code. A finite exhaustive check may appear in the blueprint only with an exact
+statement of what was enumerated and why it covers every case. Prefer arguments a
+human can check, and keep each run short (well under a minute).
 
 ## Reacting to OSVerify feedback
 

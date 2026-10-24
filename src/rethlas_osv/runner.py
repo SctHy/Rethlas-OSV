@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shlex
 import shutil
 import subprocess
 import threading
@@ -13,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from osverifier.backend import DEFAULT_MODEL, BackendCancelled, CodexBackend, deferred_sigint
+from osverifier.frozen import python_module_command
 from osverifier.models import ReviewRequest
 from osverifier.quota import RESUME_MESSAGE, QuotaExhausted, record_quota
 from osverifier.storage import (
@@ -579,6 +581,18 @@ class Experiment:
         workspace_files.copy_file(ROOT / "generation-AGENTS.md", workspace, "AGENTS.md")
         workspace_files.write_text(workspace, "problem.md", question)
         workspace_files.real_directory(workspace, "results")
+        workspace_files.real_directory(workspace, "scratch")
+        # The launcher for computational checks; rewritten each invocation so it always
+        # names the current interpreter or app bundle.
+        launcher = workspace_files.write_text(
+            workspace,
+            "tools/python",
+            "#!/bin/sh\n# Python with sympy, networkx and numpy for computational checks.\n"
+            "PYTHONDONTWRITEBYTECODE=1 exec "
+            + " ".join(shlex.quote(part) for part in python_module_command("rethlas_osv.compute"))
+            + ' "$@"\n',
+        )
+        launcher.chmod(0o755)
         if frozen["references"]:
             workspace_files.copy_tree(directory / "inputs/references", workspace, "references")
             for rel in frozen["references"]:

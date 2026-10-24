@@ -131,7 +131,23 @@ Differences from Codex to be aware of:
 - Plain verification in the GUI and `osverify verify` still use Codex; the Claude
   verifier backend applies to prove runs.
 
+Each review call puts its role's skill and the full OSVerify policy in a short system prompt
+of its own, identical for every call of that role so later calls read it from the prompt
+cache, and passes the inputs inline with each document once. A call then finishes in one
+model turn instead of reading its files through tool calls. On the bundled examples this
+halved review cost and nearly halved review time, with the same findings.
+
 Switching a backend changes the frozen manifest, so it needs a fresh run directory.
+
+### Computational checks
+
+Every generator workspace has `tools/python`, which runs Python with sympy, networkx and
+numpy (within the generator's sandbox, with scripts kept in `scratch/`). The generator is
+asked to test claims that admit a finite, symbolic or numerical check before it submits a
+full candidate, to record each check in its memory, and to say so when nothing in the
+draft can be checked. Computation is evidence for the generator only: the verifier cannot
+run code and still reviews the written argument. The library versions are part of the
+generator identity in the manifest.
 
 Reference files in a sibling `problem.refs/` directory are included automatically,
 or pass `--references /path/to/references`. PDFs require Poppler's `pdftotext` and
