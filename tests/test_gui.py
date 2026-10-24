@@ -385,7 +385,7 @@ def test_malformed_requests_are_client_errors(served):
 
 
 def test_jobs_run_children_in_utf8_mode(tmp_path):
-    """Finder gives the desktop app no locale; CLI children must still speak UTF-8."""
+    """A GUI started without a locale still runs its CLI children in UTF-8."""
     import os
 
     run_dir = tmp_path / "job"
@@ -532,7 +532,7 @@ def test_resume_never_executes_a_tampered_stored_command(served, tmp_path):
     assert not marker.exists() and read_job(run_dir)["status"] == "exited"
 
 
-def test_resume_rebuilds_the_entry_point_after_the_bundle_moved(tmp_path):
+def test_resume_rebuilds_the_entry_point_after_the_environment_moved(tmp_path):
     from osverifier.frozen import python_module_command
 
     from rethlas_osv_gui.replay import ReplayError, rebuild_command
@@ -547,14 +547,17 @@ def test_resume_rebuilds_the_entry_point_after_the_bundle_moved(tmp_path):
         "paper": ("verify", paper_argv(run_dir, settings, inputs / "paper.tex", "manual", ["thm:a", "lem:b"], "run")),
         "prove": ("prove", prove_argv(run_dir, settings, inputs / "problem.md")),
     }
-    moved = "/Volumes/Rethlas-OSV/Rethlas-OSV.app/Contents/MacOS/Rethlas-OSV"
+    # A run recorded under another interpreter resumes under the current one.
+    moved = "/old/checkout/.venv/bin/python"
     for kind, argv in commands.values():
         assert rebuild_command({"kind": kind, "argv": argv}, run_dir, **allowed) == argv
-        relocated = [moved, "--entry", *argv[2:]]
+        relocated = [moved, *argv[1:]]
         if "--" in relocated:
             cut = relocated.index("--")
-            relocated[cut + 1 : cut + 3] = [moved, "--entry"]
+            relocated[cut + 1] = moved
         assert rebuild_command({"kind": kind, "argv": relocated}, run_dir, **allowed) == argv
+        with pytest.raises(ReplayError):  # only `python -m <entry module>` is replayed
+            rebuild_command({"kind": kind, "argv": [moved, "--entry", *argv[2:]]}, run_dir, **allowed)
     # The nested verifier command of a paper run is checked like a top-level one.
     kind, argv = commands["paper"]
     cut = argv.index("--")

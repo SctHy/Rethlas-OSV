@@ -141,7 +141,7 @@ class JobManager:
                     stdout=stdout,
                     stderr=stderr,
                     cwd=str(run_dir),
-                    # A desktop app launched from Finder has no locale in its environment;
+                    # A GUI started without a locale in its environment (e.g. from a launcher);
                     # the CLIs still pipe UTF-8 prompts and write UTF-8 logs.
                     env=utf8_environment(),
                     start_new_session=True,

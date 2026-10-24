@@ -1,6 +1,6 @@
 # Rethlas-OSV guide
 
-Detailed reference for the GUI, the desktop app and `rethlas-osv`. Start with the [README](../README.md).
+Detailed reference for the GUI and `rethlas-osv`. Start with the [README](../README.md).
 
 ## Local GUI
 
@@ -37,25 +37,12 @@ The GUI is a front-end only, in the separate `rethlas_osv_gui` package. It launc
 existing CLIs as child processes (the exact command is stored in `gui-job.json` in the
 run directory), interrupts them with SIGINT exactly like Ctrl+C, and resumes by
 replaying that stored command (its arguments are validated and it is relaunched through
-the current app or interpreter, never the executable named in the file), so all freezing, caching, quota, and audit behavior is
+the current interpreter, never the executable named in the file), so all freezing, caching, quota, and audit behavior is
 the core's. Closing the browser or the GUI does not stop a run; reopening the GUI
 reattaches to it. Settings and run directories live under `~/.osverifier/` by default
 (`--home`, `--runs-dir`). Users sign in with their own Codex CLI account; the GUI only
 runs `codex login` and `codex login status` and stores no credentials. Only macOS is
 supported; PDF input is not, use LaTeX or Markdown text.
-
-### Desktop app
-
-The product is called **Rethlas-OSV**. `packaging/macos/build.sh` compiles the GUI and the core with Nuitka into
-`Rethlas-OSV.app`, bundles the pinned Codex CLI binary, and produces a `.dmg`; see
-`packaging/macos/README.md` for signing and notarization. The app keeps its data in
-`~/Library/Application Support/Rethlas-OSV/`, including its own Codex account
-directory, so users sign in once with their own subscription and the machine's
-desktop Codex account is untouched. `uv run rethlas-osv-desktop --no-window` runs the
-same desktop entry point from a checkout. Inside the bundle the executable doubles
-as the Python runtime for helper processes via `Rethlas-OSV --entry <module>`; any
-code that spawns a module must build the command with
-`osverifier.frozen.python_module_command`.
 
 Run an existing Rethlas-style proof generator with OSVerify in one repository.
 Python owns the generation/review/revision loop; Codex owns the mathematical work

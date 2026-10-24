@@ -240,12 +240,9 @@ def _version() -> str:
 
 
 class App:
-    def __init__(self, home: Path, runs_root: Path, *, defaults: dict | None = None, desktop=False):
+    def __init__(self, home: Path, runs_root: Path):
         self.home = home
         self.runs_root = runs_root
-        self.defaults = defaults or {}
-        self.desktop = desktop
-        self.quit_requested = threading.Event()
         self.home.mkdir(parents=True, exist_ok=True)
         self.runs_root.mkdir(parents=True, exist_ok=True)
         self.settings_path = home / "settings.json"
@@ -258,18 +255,18 @@ class App:
     def settings(self) -> dict:
         with self._settings_lock:
             try:
-                settings = load_settings(self.settings_path, self.defaults)
+                settings = load_settings(self.settings_path)
                 self.settings_error = None
                 return settings
             except ValueError as exc:
                 # A corrupt file must not lock the user out; report it and use defaults.
                 self.settings_error = str(exc)
-                return validate_settings(self.defaults)
+                return validate_settings({})
 
     def update_settings(self, raw: dict) -> dict:
         with self._settings_lock:
             try:
-                settings = save_settings(self.settings_path, raw, self.defaults)
+                settings = save_settings(self.settings_path, raw)
             except ValueError as exc:
                 raise ApiError(HTTPStatus.BAD_REQUEST, str(exc)) from exc
             self.settings_error = None
@@ -282,7 +279,6 @@ class App:
             "python": sys.executable,
             "settings": self.settings(),
             "settings_error": self.settings_error,
-            "desktop": self.desktop,
             "version": _version(),
             "active_runs": self.jobs.shutdown_note(),
             "backend_models": BACKEND_DEFAULT_MODELS,
@@ -387,10 +383,10 @@ class App:
             argv = rebuild_command(
                 job,
                 directory,
-                codex_bins=(settings["codex_bin"], self.defaults.get("codex_bin")),
-                codex_homes=(settings["codex_home"], self.defaults.get("codex_home")),
-                claude_bins=(settings["claude_bin"], self.defaults.get("claude_bin")),
-                claude_dirs=(settings["claude_config_dir"], self.defaults.get("claude_config_dir")),
+                codex_bins=(settings["codex_bin"],),
+                codex_homes=(settings["codex_home"],),
+                claude_bins=(settings["claude_bin"],),
+                claude_dirs=(settings["claude_config_dir"],),
             )
         except ReplayError as exc:
             raise ApiError(HTTPStatus.BAD_REQUEST, f"cannot resume this run: {exc}") from exc
@@ -430,7 +426,6 @@ ROUTES = [
     ("GET", re.compile(r"^/api/runs/(?P<name>[^/]+)/export$"), "get_export"),
     ("GET", re.compile(r"^/api/runs/(?P<name>[^/]+)/reviews/(?P<key>[^/]+)/export$"), "get_export"),
     ("GET", re.compile(r"^/api/state$"), "get_state"),
-    ("POST", re.compile(r"^/api/quit$"), "post_quit"),
     ("GET", re.compile(r"^/api/settings$"), "get_settings"),
     ("PUT", re.compile(r"^/api/settings$"), "put_settings"),
     ("GET", re.compile(r"^/api/codex/status$"), "get_codex_status"),
@@ -550,13 +545,6 @@ class Handler(BaseHTTPRequestHandler):
     # ---- endpoints -------------------------------------------------------------
     def get_state(self, query):
         self._send_json(self.app.state())
-
-    def post_quit(self, query):
-        # Runs are separate processes and keep going; only this server stops.
-        # Answer first: once the event is set the process may exit at any moment.
-        self._send_json({"quitting": True, "active_runs": self.app.jobs.shutdown_note()})
-        self.wfile.flush()
-        self.app.quit_requested.set()
 
     def get_settings(self, query):
         self._send_json(self.app.settings())

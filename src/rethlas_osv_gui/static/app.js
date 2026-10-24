@@ -687,7 +687,7 @@ async function resumeRun() {
   refreshRun(false);
 }
 
-// Clipboard: the async API first; WebKit (the desktop window) may refuse it, so fall back
+// Clipboard: the async API first; some browsers (e.g. WebKit) may refuse it, so fall back
 // to a hidden textarea and the legacy copy command.
 async function copyToClipboard(text) {
   try { if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); return true; } } catch (e) {}
@@ -708,25 +708,12 @@ async function copyWithFeedback(text, button) {
 // Copies the raw text (Markdown with LaTeX math) kept in state.texts, never the rendered HTML.
 function copyRaw(key, button) { copyWithFeedback(state.texts[key] || "", button); }
 function copyText(id, button) { copyWithFeedback($(id).textContent, button); }
-async function quitApp() {
-  const st = await api("/api/state").catch(() => ({ active_runs: [] }));
-  const n = (st.active_runs || []).length;
-  const question = n
-    ? `${n} run(s) are in progress. They keep running in the background and you can reopen the app to watch them. Quit now?`
-    : "Quit Rethlas-OSV?";
-  if (!confirm(question)) return;
-  try { await api("/api/quit", { method: "POST" }); } catch (e) {}
-  document.body.innerHTML = '<main><div class="panel"><h2>Rethlas-OSV has quit.</h2>'
-    + '<p class="muted">You can close this window.</p></div></main>';
-  window.close();
-}
 
 // ---- event dispatch -----------------------------------------------------------
 // The page has no inline handlers (its CSP forbids inline script): elements name an
 // action in data-action / data-change, and rows carry their run or review name as data.
 // Nothing taken from run data ever becomes code.
 const CLICK_ACTIONS = {
-  "quit": () => quitApp(),
   "pick-file": (el) => pickFile(el.dataset.input, el.dataset.target),
   "start-verify": () => startVerify(),
   "start-prove": () => startProve(),
@@ -776,7 +763,6 @@ document.addEventListener("change", (event) => {
     if (st.backend_models) state.backendModels = st.backend_models;
     fillSettings(st.settings);
     $("runs-root").textContent = `Run folders live in ${st.runs_root}`;
-    if (st.desktop) $("quit-btn").classList.remove("hidden");
     $("about-version").textContent = "version " + (st.version || "dev");
     $("about-home").textContent = st.home;
     if (st.settings_error) $("s-error").textContent = st.settings_error;

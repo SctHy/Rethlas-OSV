@@ -2,9 +2,9 @@
 
 ``gui-job.json`` lives inside the run folder, and a run folder may have been copied from
 someone else. Resume therefore keeps only recorded arguments that this GUI could have
-produced, checks each value, and launches them through the current interpreter or app
-bundle. The executable is never taken from the file, which also keeps resume working
-after the app bundle moved.
+produced, checks each value, and launches them through the current interpreter. The
+executable is never taken from the file, which also keeps resume working after the
+environment moved.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import shutil
 from collections.abc import Callable, Iterable
 from pathlib import Path
 
-from osverifier.frozen import ENTRY_FLAG, python_module_command
+from osverifier.frozen import python_module_command
 from osverifier_reports.paper_prepare import MODES
 
 from .settings import BACKENDS, REASONING_EFFORTS, SEARCH_POLICIES, WEB_SEARCH_MODES
@@ -138,7 +138,7 @@ def _known_binary(value: str, known: set[str], product: str) -> None:
         return
     raise ReplayError(
         f"this run was started with the {product} binary {value!r}, which is neither the one "
-        f"in Settings nor the bundled one; set Settings → {product} binary to it to resume"
+        f"in Settings; set Settings → {product} binary to it to resume"
     )
 
 
@@ -276,7 +276,7 @@ def _arguments(tokens: list[str], spec: dict, context: _Context, role: str) -> l
 
 
 def _entry(argv: list[str], roles: tuple[str, ...]) -> tuple[str, list[str]]:
-    if len(argv) < 3 or argv[1] not in ("-m", ENTRY_FLAG):
+    if len(argv) < 3 or argv[1] != "-m":
         raise ReplayError("the stored command does not launch a GUI entry point")
     module = argv[2]
     for role in roles:

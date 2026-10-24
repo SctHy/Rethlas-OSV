@@ -99,9 +99,8 @@ class CodexGenerator:
             "mcp_servers.rethlas.cwd": str(workspace),
             "mcp_servers.rethlas.required": True,
             "mcp_servers.rethlas.default_tools_approval_mode": "approve",
-            # The compiled desktop bundle starts the memory server by relaunching its own
-            # 400 MB executable; a cold start on a slow or Rosetta Mac, times several
-            # parallel branches, exceeds Codex's default window.
+            # A cold start of the memory server, times several parallel branches on a
+            # busy machine, can exceed Codex's default window.
             "mcp_servers.rethlas.startup_timeout_sec": 120,
             "mcp_servers.rethlas.tool_timeout_sec": 120,
             "mcp_servers.rethlas.env.RETHLAS_ALLOW_SEARCH": "0"

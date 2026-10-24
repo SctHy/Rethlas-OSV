@@ -1,12 +1,12 @@
 # Rethlas-OSV
 
 This repository holds the Rethlas generation integration (`src/rethlas_osv`) and the
-GUI/desktop app (`src/rethlas_osv_gui`). The verifier is the separately installed
+local web GUI (`src/rethlas_osv_gui`). The verifier is the separately installed
 `osverifier` package from OSVerify/OSVerify; its AGENTS.md defines the review contracts
 (decisions, exact audited feedback, quota handling, provenance). Never weaken them here,
 never use core private attributes, and never copy or patch core code into this repository.
 
-Use `uv sync --extra desktop`, `uv run pytest`, and `uv run ruff check .`. OSVerify is
+Use `uv sync`, `uv run pytest`, and `uv run ruff check .`. OSVerify is
 pinned to a release tag in `[tool.uv.sources]`; to change both together, point it at a
 local checkout temporarily and pin the new tag before merging.
 
@@ -48,7 +48,7 @@ by replaying the stored command's validated arguments through the current entry 
 (`rethlas_osv_gui/replay.py`; never the stored executable); it never calls the verifier
 in-process or bypasses the CLI contracts. Only LaTeX/Markdown text input; macOS only (no Linux or Windows); users bring their
 own Codex account.
-Helper processes (verifier, prover, memory server, paper extraction) must be spawned
-through `osverifier.frozen.python_module_command`, never a literal `python -m`, so the
-compiled desktop bundle can dispatch them with `--entry`. The product name is Rethlas-OSV; macOS is the first desktop
-target; users sign in with their own Codex subscription inside the app.
+Helper processes (verifier, prover, memory server, paper extraction, computational checks)
+are spawned through `osverifier.frozen.python_module_command`, so they run under the
+current interpreter. The product name is Rethlas-OSV; it runs on macOS from source (no
+desktop bundle); users sign in with their own Codex or Claude account.

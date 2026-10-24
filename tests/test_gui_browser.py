@@ -99,7 +99,6 @@ def test_tabs_theme_and_about(browser_page):
     assert page.evaluate("document.documentElement.dataset.theme") == "dark"
     page.select_option("#theme-select", "system")
     assert page.evaluate("document.documentElement.dataset.theme") is None
-    assert page.is_hidden("#quit-btn")
     assert page.text_content("#about-version").startswith("version ")
     page.click("text=Citation")
     page.click(".cite button")
@@ -235,7 +234,7 @@ def test_codex_sign_in_shows_the_page_link_and_cancels(browser_page):
     until(page, "document.getElementById('login-status')?.textContent.includes('ended')")
 
 
-def test_file_loading_report_drafts_sign_in_page_and_quit(browser_page, tmp_path):
+def test_file_loading_report_drafts_and_sign_in_page(browser_page, tmp_path):
     app, client, page = browser_page
     # Load file…: a Latin-1 source is decoded without losing its accents.
     source = tmp_path / "paper.tex"
@@ -268,11 +267,3 @@ def test_file_loading_report_drafts_sign_in_page_and_quit(browser_page, tmp_path
     assert popup.value.url == "https://auth.example/oauth?state=abc"
     popup.value.close()
     page.click("#settings-login button:has-text('Cancel sign-in')")
-
-    # Quit (desktop app only): the server is asked to stop; runs keep going on their own.
-    app.desktop = True
-    page.reload()
-    page.wait_for_selector("#quit-btn:not(.hidden)")
-    page.click("#quit-btn")
-    until(page, "document.body.textContent.includes('has quit')")
-    assert app.quit_requested.is_set()

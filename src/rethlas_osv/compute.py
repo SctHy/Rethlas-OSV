@@ -2,9 +2,8 @@
 
 Runs a script (``tools/python check.py ARGS``), inline code (``tools/python -c CODE``) or
 standard input (``tools/python -``) in this interpreter, where sympy, networkx and
-numpy are installed. It is started through ``osverifier.frozen.python_module_command``,
-so the same launcher also works when the integration runs from the desktop bundle.
-Results are evidence for the generator, never part of the verifier's input.
+numpy are installed. Results are evidence for the generator, never part of the
+verifier's input.
 """
 
 from __future__ import annotations

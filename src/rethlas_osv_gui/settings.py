@@ -201,23 +201,19 @@ def validate_settings(raw: dict) -> dict:
     return merged
 
 
-def load_settings(path: Path, base: dict | None = None) -> dict:
-    """Validated settings from disk; ValueError names what is wrong with the file.
-
-    ``base`` supplies installation defaults (for example a bundled Codex binary) that
-    the file's own top-level values override.
-    """
+def load_settings(path: Path) -> dict:
+    """Validated settings from disk; ValueError names what is wrong with the file."""
     if not path.exists():
-        return validate_settings(base or {})
+        return validate_settings({})
     try:
         raw = read_json(path)
     except ValueError as exc:
         raise ValueError(f"{path} is not valid JSON") from exc
-    return validate_settings({**(base or {}), **raw})
+    return validate_settings(raw)
 
 
-def save_settings(path: Path, raw: dict, base: dict | None = None) -> dict:
-    settings = validate_settings({**(base or {}), **raw})
+def save_settings(path: Path, raw: dict) -> dict:
+    settings = validate_settings(raw)
     atomic_json(path, settings)
     return settings
 

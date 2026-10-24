@@ -6,32 +6,10 @@ with [OSVerify](https://github.com/OSVerify/OSVerify). Only feedback that OSVeri
 auditor approved word for word goes back to the generator, and a run stops at the first
 draft handed off as `READY_FOR_HUMAN`. A person still makes the final call.
 
-It also includes a desktop app and a local web GUI, for proving and for plain OSVerify
-reviews of solutions and papers.
+It also includes a local web GUI, for proving and for plain OSVerify reviews of solutions
+and papers. Please report problems in [Issues](https://github.com/OSVerify/Rethlas-OSV/issues).
 
-## Download
-
-Please report problems in [Issues](https://github.com/OSVerify/Rethlas-OSV/issues). Get the installer for your system
-from [Releases](https://github.com/OSVerify/Rethlas-OSV/releases) and sign in with your own
-Codex account inside the app.
-
-| System | File |
-| --- | --- |
-| macOS, Apple silicon (M1 or later) | `Rethlas-OSV-<version>-arm64.dmg` |
-| macOS, Intel | `Rethlas-OSV-<version>-x86_64.dmg` |
-
-**Opening the app on macOS.** The app is not signed with an Apple Developer ID yet, so
-macOS blocks the first launch. Once per install:
-
-1. Open the `.dmg` and drag **Rethlas-OSV** into **Applications**.
-2. Open Rethlas-OSV. macOS says it cannot verify the app; click **Done**.
-3. Open **System Settings → Privacy & Security**, scroll down to **Security**, click
-   **Open Anyway** next to the Rethlas-OSV message, and confirm with your password.
-
-From then on it opens normally. On macOS 14 or earlier you can instead Control-click the
-app in Applications, choose **Open**, and confirm with **Open**.
-
-## Run from source
+## Install and run
 
 Requires Python 3.12+, [uv](https://docs.astral.sh/uv/) and the
 [Codex CLI](https://github.com/openai/codex) 0.162 or newer, signed in with your own account
@@ -74,7 +52,7 @@ with up to ten revision rounds each. Rerun the same command to resume.
 
 ## Documentation
 
-- [Guide](docs/guide.md): GUI, desktop app, options, decisions, resume and budgets
+- [Guide](docs/guide.md): GUI, options, decisions, resume and budgets
 - [How Rethlas was adapted](docs/rethlas-adaptation.md) and the
   [live smoke test](docs/rethlas-smoke-test.md)
 - [Development notes](AGENTS.md)

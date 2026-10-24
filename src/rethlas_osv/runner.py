@@ -583,7 +583,7 @@ class Experiment:
         workspace_files.real_directory(workspace, "results")
         workspace_files.real_directory(workspace, "scratch")
         # The launcher for computational checks; rewritten each invocation so it always
-        # names the current interpreter or app bundle.
+        # names the current interpreter.
         launcher = workspace_files.write_text(
             workspace,
             "tools/python",

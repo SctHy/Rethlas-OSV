@@ -26,3 +26,7 @@ upstream verification-agent skills `verify-sequential-statements` and
 `check-referenced-statements` (`agents/verification/.agents/skills/` at the same
 commit). Those upstream skills are not vendored or used as skills; the adapted text
 is rewritten for OSVerify's issue, decision, and exact-feedback contracts.
+
+The GUI page bundles Pico CSS 2.1.1, KaTeX 0.16.11 with its fonts, and marked 12.0.2, all
+under the MIT License, unmodified in `src/rethlas_osv_gui/static/vendor/` with their
+license files.
